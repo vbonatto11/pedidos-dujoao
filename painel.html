@@ -33,7 +33,7 @@
       <p class="entrada__texto" id="entrada-texto">Digite a senha do painel para ver os pedidos.</p>
       <div class="campo">
         <label for="senha">Senha</label>
-        <input id="senha" type="password" autocomplete="current-password" required>
+        <input id="senha" type="password" autocomplete="current-password" required aria-describedby="entrada-erro">
       </div>
       <label class="lembrar"><input type="checkbox" id="lembrar" checked> Lembrar neste aparelho</label>
       <div class="alerta" id="entrada-erro" role="alert" hidden></div>
@@ -66,9 +66,10 @@
           <select id="rodada"></select>
         </label>
         <span class="status-loja" id="status-loja"></span>
-        <span class="atualizado" id="atualizado" aria-live="polite"></span>
+        <span class="atualizado" id="atualizado"></span>
       </div>
       <section id="painel-tickets" role="tabpanel" aria-labelledby="aba-tickets">
+        <h2 class="sr-only">Tickets</h2>
         <div class="filtros">
           <div class="filtros__chips" id="filtros" role="group" aria-label="Filtrar tickets"></div>
           <label class="busca">
@@ -77,11 +78,12 @@
             <input id="busca" type="search" placeholder="Buscar por nome, nº ou produto" autocomplete="off">
           </label>
         </div>
-        <div class="tickets" id="tickets"></div>
+        <div class="tickets" id="tickets" tabindex="-1"></div>
         <div class="vazio-painel" id="tickets-vazio" hidden></div>
       </section>
 
       <section id="painel-resumo" role="tabpanel" aria-labelledby="aba-resumo" hidden>
+        <h2 class="sr-only">Resumo da rodada</h2>
         <div class="numeros" id="numeros"></div>
         <div class="resumo-grade">
           <article class="cartao papel serrilha">
@@ -90,7 +92,7 @@
               <p class="cartao__sub">Tudo que foi pedido nesta rodada, sem os cancelados.</p>
             </div>
             <div id="lista-produtos"></div>
-            <button class="btn btn--primario btn--largo" type="button" id="copiar-produtos"><svg aria-hidden="true"><use href="#i-copiar"/></svg>Copiar para o WhatsApp</button>
+            <button class="btn btn--primario btn--largo" type="button" id="copiar-produtos"><svg aria-hidden="true"><use href="#i-copiar"/></svg>Copiar resumo para o WhatsApp</button>
           </article>
 
           <div class="resumo-coluna">
@@ -134,7 +136,7 @@
     </main>
   </div>
 
-  <dialog class="dialogo papel" id="dialogo" aria-labelledby="dialogo-titulo">
+  <dialog class="dialogo papel" id="dialogo" aria-labelledby="dialogo-titulo" aria-describedby="dialogo-texto">
     <form method="dialog">
       <h2 class="dialogo__titulo" id="dialogo-titulo"></h2>
       <p class="dialogo__texto" id="dialogo-texto"></p>

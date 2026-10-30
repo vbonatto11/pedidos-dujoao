@@ -40,7 +40,7 @@
   <header class="topo">
     <img class="topo__logo" src="assets/img/logo.png" alt="DuJOÃO, A Casa do Torresmo" width="616" height="640">
     <h1 class="fita">
-      <span class="sr-only">Faça seu pedido</span>
+      <span class="sr-only" id="titulo-pagina">Faça seu pedido</span>
       <svg viewBox="0 0 600 160" aria-hidden="true" focusable="false">
         <defs>
           <linearGradient id="fita-ouro" x1="0" y1="0" x2="0" y2="1">
@@ -57,12 +57,12 @@
         <path d="M60,34 Q300,100 540,34 L540,90 Q300,156 60,90 Z" fill="url(#fita-ouro)"/>
         <path d="M66,41 Q300,107 534,41" fill="none" stroke="#fff3cc" stroke-opacity=".6" stroke-width="1.4"/>
         <path d="M66,83 Q300,149 534,83" fill="none" stroke="#8f5305" stroke-opacity=".45" stroke-width="1.4"/>
-        <text font-size="38" fill="#4a0d0c"><textPath href="#fita-curva" startOffset="50%" text-anchor="middle">Faça seu pedido</textPath></text>
+        <text font-size="38" fill="#4a0d0c"><textPath id="fita-texto" href="#fita-curva" startOffset="50%" text-anchor="middle">Faça seu pedido</textPath></text>
       </svg>
     </h1>
     <ol class="passos">
       <li>Escolha os produtos</li>
-      <li>Confirme com seu nome e e-mail</li>
+      <li>Confirme com seu nome e <span class="nw">e-mail</span></li>
       <li>Receba e pague por PIX depois</li>
     </ol>
     <p class="topo__aviso" id="aviso" role="status" hidden></p>
@@ -91,25 +91,28 @@
           <section id="etapa-pedido" aria-label="Revisão do pedido">
             <div class="comanda__vazio" id="vazio">
               <strong>Nenhum produto ainda.</strong>
-              Toque em + ao lado dos produtos para montar o pedido.
+              <span id="vazio-texto">Use o + ao lado dos produtos para montar o pedido.</span>
             </div>
 
             <ul class="linhas" id="linhas"></ul>
 
             <div class="total" id="total" hidden>
-              <span>Total</span>
-              <div>
-                <strong id="total-valor">R$ 0,00</strong>
-                <p class="total__extra" id="total-extra" hidden>+ joelho de porco, pelo peso</p>
+              <div class="total__linha">
+                <span>Total</span>
+                <div>
+                  <strong id="total-valor">R$ 0,00</strong>
+                  <p class="total__extra" id="total-extra" hidden>+ itens cobrados pelo peso</p>
+                </div>
               </div>
+              <button class="btn btn--primario btn--largo total__continuar" id="ir-dados" type="button">Continuar para seus dados</button>
             </div>
 
             <form class="form" id="form" novalidate hidden>
               <h3 class="form__titulo">Seus dados</h3>
 
               <div class="campo" id="campo-nome">
-                <label for="nome">Seu nome</label>
-                <input id="nome" name="nome" type="text" autocomplete="name" maxlength="80" required aria-describedby="erro-nome">
+                <label for="nome">Nome e sobrenome</label>
+                <input id="nome" name="nome" type="text" autocomplete="name" maxlength="80" required placeholder="Ex.: Ana Souza" aria-describedby="erro-nome">
                 <p class="campo__erro" id="erro-nome"></p>
               </div>
 
@@ -128,11 +131,6 @@
               <div class="campo">
                 <label for="obs">Observações <span class="opcional">(opcional)</span></label>
                 <textarea id="obs" name="obs" rows="2" maxlength="500"></textarea>
-              </div>
-
-              <div class="isca" aria-hidden="true">
-                <label for="site">Deixe em branco</label>
-                <input id="site" name="site" type="text" tabindex="-1" autocomplete="off">
               </div>
 
               <div class="alerta" id="alerta" role="alert" hidden></div>
@@ -161,7 +159,7 @@
         <span class="barra__qtd" id="barra-qtd">0 itens</span>
         <span class="barra__total" id="barra-total">R$ 0,00</span>
       </span>
-      <span class="barra__acao">Revisar pedido</span>
+      <span class="barra__acao" id="barra-acao">Revisar pedido</span>
     </button>
   </div>
   <div class="fundo" id="fundo" hidden></div>

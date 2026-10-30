@@ -3,21 +3,25 @@
   'use strict';
 
   var CFG = Object.assign({ urlPlanilha: '' }, window.CONFIG_DUJOAO || {});
-  var K_SENHA = 'dujoao.painel.senha';
+  var K_TOKEN = 'dujoao.painel.token';
   var INTERVALO = 60000;
   var brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
   var estado = {
-    senha: '',
+    token: '',
     dados: null,
-    rodada: null,
-    filtro: 'todos',
+    rodadaFixa: null,   // só fica preenchida quando você escolhe uma rodada antiga
+    filtro: 'ativos',
     busca: '',
     vistos: null,
     vistosRodada: null,
+    rodadaAtualVista: null,
     novos: new Set(),
     ultimaCarga: 0,
-    carregando: false
+    carregando: false,
+    pendente: false,
+    req: 0,
+    mutacao: 0
   };
 
   /* ---------- utilidades ---------- */
@@ -30,33 +34,41 @@
   }
   function normaliza(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
   function plural(n, um, varios) { return n + ' ' + (n === 1 ? um : varios); }
+  function nacional(d) {
+    d = String(d || '').replace(/\D/g, '').replace(/^0+/, '');
+    if ((d.length === 12 || d.length === 13) && d.indexOf('55') === 0) d = d.slice(2);
+    else if (d.length > 11) d = d.slice(-11);
+    return d.length === 10 || d.length === 11 ? d : '';
+  }
   function telefone(d) {
-    d = String(d || '').replace(/\D/g, '');
-    if (d.length > 11 && d.indexOf('55') === 0) d = d.slice(2);
+    d = nacional(d);
     if (d.length === 11) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
     if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
     return d;
   }
-  function numeroWhats(d) { d = String(d || '').replace(/\D/g, ''); return d.length <= 11 ? '55' + d : d; }
   function primeiroNome(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }
+  function nbsp(s) { return String(s).replace(/ (\d)/g, ' $1'); }
 
-  function lerSenha() {
-    try { return localStorage.getItem(K_SENHA) || sessionStorage.getItem(K_SENHA) || ''; } catch (e) { return ''; }
+  function lerToken() {
+    try { return localStorage.getItem(K_TOKEN) || sessionStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; }
   }
-  function gravarSenha(s, lembrar) {
-    try { (lembrar ? localStorage : sessionStorage).setItem(K_SENHA, s); } catch (e) { /* sem armazenamento */ }
+  function gravarToken(t, lembrar) {
+    try { (lembrar ? localStorage : sessionStorage).setItem(K_TOKEN, t); } catch (e) { /* sem armazenamento */ }
   }
-  function apagarSenha() {
-    try { localStorage.removeItem(K_SENHA); sessionStorage.removeItem(K_SENHA); } catch (e) { /* sem armazenamento */ }
+  function apagarToken() {
+    try {
+      localStorage.removeItem(K_TOKEN); sessionStorage.removeItem(K_TOKEN);
+      localStorage.removeItem('dujoao.painel.senha'); sessionStorage.removeItem('dujoao.painel.senha'); // versão antiga
+    } catch (e) { /* sem armazenamento */ }
   }
 
   var toastTimer;
-  function avisar(msg) {
+  function avisar(msg, ms) {
     var t = $('toast');
     t.textContent = msg;
     t.classList.add('toast--visivel');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('toast--visivel'); }, 2800);
+    toastTimer = setTimeout(function () { t.classList.remove('toast--visivel'); }, ms || 3000);
   }
 
   function copiar(texto) {
@@ -92,6 +104,18 @@
       })
       .finally(function () { if (timer) clearTimeout(timer); });
   }
+  function chamarPainel(corpo) {
+    corpo.token = estado.token;
+    return chamar(corpo, 30000).then(function (r) {
+      if (r && !r.ok && (r.codigo === 'sessao' || r.codigo === 'sem-senha')) {
+        apagarToken();
+        estado.token = '';
+        mostrarEntrada(r.erro);
+        var e = new Error(r.erro); e.codigo = r.codigo; e.silencioso = true; throw e;
+      }
+      return r;
+    });
+  }
 
   /* ---------- diálogo de confirmação ---------- */
   function confirmar(titulo, texto, rotuloSim) {
@@ -115,14 +139,16 @@
     $('app').hidden = true;
     $('entrada').hidden = false;
     var erro = $('entrada-erro');
-    if (msg) { erro.textContent = msg; erro.hidden = false; } else { erro.hidden = true; }
+    var senha = $('senha');
+    if (msg) { erro.textContent = msg; erro.hidden = false; senha.setAttribute('aria-invalid', 'true'); }
+    else { erro.hidden = true; senha.removeAttribute('aria-invalid'); }
     if (!CFG.urlPlanilha) {
       $('entrada-texto').textContent = 'O painel funciona depois que a planilha estiver ligada ao site. Siga o passo a passo do arquivo LEIAME.md.';
-      $('senha').disabled = true;
+      senha.disabled = true;
       $('entrar').disabled = true;
       return;
     }
-    setTimeout(function () { $('senha').focus(); }, 30);
+    setTimeout(function () { senha.focus(); if (msg) senha.select(); }, 30);
   }
 
   function entrar(e) {
@@ -132,12 +158,16 @@
     var botao = $('entrar');
     botao.disabled = true;
     botao.innerHTML = '<span class="girando" aria-hidden="true"></span>Entrando…';
-    estado.senha = senha;
-    carregar(false).then(function (ok) {
-      if (ok) {
-        gravarSenha(senha, $('lembrar').checked);
-        $('senha').value = '';
-      }
+    chamar({ acao: 'entrar', senha: senha }, 30000).then(function (r) {
+      if (!r || !r.ok) { mostrarEntrada((r && r.erro) || 'Não foi possível entrar.'); return; }
+      estado.token = r.token;
+      gravarToken(r.token, $('lembrar').checked);
+      $('senha').value = '';
+      receber(r, false);
+    }).catch(function (err) {
+      mostrarEntrada(err && err.codigo === 'resposta'
+        ? 'A planilha não respondeu como esperado. Confira se a implantação está como "Qualquer pessoa".'
+        : 'Não foi possível conectar à planilha. Confira a internet e tente de novo.');
     }).finally(function () {
       botao.disabled = false;
       botao.textContent = 'Entrar';
@@ -146,44 +176,49 @@
 
   /* ---------- carregar dados ---------- */
   function carregar(silencioso) {
-    if (estado.carregando) return Promise.resolve(false);
+    if (estado.carregando) { estado.pendente = true; return Promise.resolve(false); }
     estado.carregando = true;
+    estado.pendente = false;
+    var meu = ++estado.req;
+    var mutacaoAntes = estado.mutacao;
     $('atualizar').classList.add('icone-btn--girando');
-    return chamar({ acao: 'painel', senha: estado.senha, rodada: estado.rodada }, 30000).then(function (r) {
-      if (!r || !r.ok) {
-        if (r && (r.codigo === 'senha' || r.codigo === 'senha-padrao')) {
-          apagarSenha();
-          mostrarEntrada(r.erro);
-          return false;
-        }
-        throw new Error((r && r.erro) || 'Erro ao carregar.');
-      }
-      var numeros = r.pedidos.map(function (p) { return p.numero; });
-      if (estado.vistos && estado.vistosRodada === r.rodada) {
-        var novos = numeros.filter(function (n) { return !estado.vistos.has(n); });
-        novos.forEach(function (n) { estado.novos.add(n); });
-        if (novos.length) avisar(novos.length === 1 ? 'Chegou 1 pedido novo.' : 'Chegaram ' + novos.length + ' pedidos novos.');
-      }
-      estado.vistos = new Set(numeros);
-      estado.vistosRodada = r.rodada;
-      estado.dados = r;
-      estado.rodada = r.rodada;
-      estado.ultimaCarga = Date.now();
-      mostrarApp();
-      renderizar();
-      var agora = new Date();
-      $('atualizado').textContent = 'Atualizado às ' + String(agora.getHours()).padStart(2, '0') + ':' + String(agora.getMinutes()).padStart(2, '0');
+    return chamarPainel({ acao: 'painel', rodada: estado.rodadaFixa }).then(function (r) {
+      if (meu !== estado.req) return false;
+      if (!r || !r.ok) throw new Error((r && r.erro) || 'Erro ao carregar.');
+      // uma mudança feita durante a carga deixa esta resposta velha: carrega de novo
+      if (mutacaoAntes !== estado.mutacao) { estado.pendente = true; return false; }
+      receber(r, silencioso);
       return true;
     }).catch(function (e) {
-      if (!$('app').hidden) avisar('Não foi possível atualizar. Confira a internet.');
-      else mostrarEntrada(e && e.codigo === 'resposta'
-        ? 'A planilha não respondeu como esperado. Confira se a implantação está como "Qualquer pessoa".'
-        : 'Não foi possível conectar à planilha. Confira a internet e tente de novo.');
+      if (e && e.silencioso) return false;
+      if (!$('app').hidden) { if (!silencioso) avisar('Não foi possível atualizar. Confira a internet.'); }
+      else mostrarEntrada('Não foi possível conectar à planilha. Confira a internet e tente de novo.');
       return false;
     }).finally(function () {
       estado.carregando = false;
       $('atualizar').classList.remove('icone-btn--girando');
+      if (estado.pendente) { estado.pendente = false; setTimeout(function () { carregar(true); }, 300); }
     });
+  }
+
+  function receber(r, silencioso) {
+    var numeros = r.pedidos.map(function (p) { return p.numero; });
+    if (estado.vistos && estado.vistosRodada === r.rodada) {
+      var novos = numeros.filter(function (n) { return !estado.vistos.has(n); });
+      novos.forEach(function (n) { estado.novos.add(n); });
+      if (novos.length) avisar(novos.length === 1 ? 'Chegou 1 pedido novo.' : 'Chegaram ' + novos.length + ' pedidos novos.');
+    }
+    if (estado.rodadaAtualVista && r.rodadaAtual > estado.rodadaAtualVista) avisar('Começou a rodada ' + r.rodadaAtual + '.');
+    estado.rodadaAtualVista = r.rodadaAtual;
+    if (estado.rodadaFixa && estado.rodadaFixa === r.rodadaAtual) estado.rodadaFixa = null;
+    estado.vistos = new Set(numeros);
+    estado.vistosRodada = r.rodada;
+    estado.dados = r;
+    estado.ultimaCarga = Date.now();
+    mostrarApp();
+    renderizar(silencioso);
+    var agora = new Date();
+    $('atualizado').textContent = 'Atualizado às ' + String(agora.getHours()).padStart(2, '0') + ':' + String(agora.getMinutes()).padStart(2, '0');
   }
 
   function mostrarApp() {
@@ -193,18 +228,45 @@
 
   /* ---------- renderização ---------- */
   var FILTROS = [
-    { id: 'todos', nome: 'Todos', teste: function (p) { return !p.cancelado; } },
+    { id: 'ativos', nome: 'Ativos', teste: function (p) { return !p.cancelado; } },
     { id: 'a-pagar', nome: 'A pagar', teste: function (p) { return !p.cancelado && !p.pago; } },
     { id: 'a-entregar', nome: 'A entregar', teste: function (p) { return !p.cancelado && !p.entregue; } },
     { id: 'concluidos', nome: 'Concluídos', teste: function (p) { return !p.cancelado && p.pago && p.entregue; } },
     { id: 'cancelados', nome: 'Cancelados', teste: function (p) { return p.cancelado; } }
   ];
+  function filtroAtual() { return FILTROS.filter(function (f) { return f.id === estado.filtro; })[0] || FILTROS[0]; }
 
-  function renderizar() {
+  /** Guarda foco e posição da tela para a lista não "pular" quando os dados atualizam. */
+  function lembrarTela() {
+    var info = {};
+    var a = document.activeElement;
+    var t = a && a.closest ? a.closest('.ticket') : null;
+    if (t) info.foco = { numero: t.getAttribute('data-numero'), campo: a.getAttribute('data-campo') || (a.classList.contains('ticket__cancelar') ? 'cancelado' : null) };
+    var f = a && a.closest ? a.closest('[data-filtro]') : null;
+    if (f) info.filtro = f.getAttribute('data-filtro');
+    if (!$('painel-tickets').hidden) {
+      var topo = document.querySelector('.painel-topo').getBoundingClientRect().bottom;
+      var ref = [].find.call(document.querySelectorAll('.ticket'), function (el) { return el.getBoundingClientRect().bottom > topo + 10; });
+      if (ref) info.ancora = { numero: ref.getAttribute('data-numero'), y: ref.getBoundingClientRect().top };
+    }
+    return info;
+  }
+  function restaurarTela(info) {
+    if (info.ancora && window.scrollY > 0) {
+      var el = document.querySelector('.ticket[data-numero="' + info.ancora.numero + '"]');
+      if (el) window.scrollBy(0, el.getBoundingClientRect().top - info.ancora.y);
+    }
+    if (info.foco) focarTicket(info.foco.numero, info.foco.campo);
+    if (info.filtro) { var b = document.querySelector('[data-filtro="' + info.filtro + '"]'); if (b) b.focus({ preventScroll: true }); }
+  }
+
+  function renderizar(silencioso) {
+    var info = lembrarTela();
     renderTopo();
     renderFiltros();
     renderTickets();
     renderResumo();
+    if (silencioso) restaurarTela(info);
   }
 
   function renderTopo() {
@@ -218,8 +280,7 @@
     var st = $('status-loja');
     st.textContent = d.aberto ? 'Recebendo pedidos' : 'Pedidos fechados';
     st.className = 'status-loja ' + (d.aberto ? 'status-loja--aberto' : 'status-loja--fechado');
-    var ativos = d.pedidos.filter(function (p) { return !p.cancelado; }).length;
-    $('n-tickets').textContent = ativos;
+    $('n-tickets').textContent = d.pedidos.filter(function (p) { return !p.cancelado; }).length;
   }
 
   function renderFiltros() {
@@ -245,16 +306,19 @@
         '<span class="ticket__valor">' + (i.subtotal === null ? 'pelo peso' : dinheiro(i.subtotal)) + '</span></li>';
     }).join('');
     var contato = [];
-    if (p.whatsapp) {
+    var fone = nacional(p.whatsapp);
+    if (fone) {
       var msg = encodeURIComponent('Oi, ' + primeiroNome(p.nome) + '! Sobre o seu pedido nº ' + p.numero + ' DuJOÃO:');
-      contato.push('<a href="https://wa.me/' + numeroWhats(p.whatsapp) + '?text=' + msg + '" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-conversa"/></svg>' + esc(telefone(p.whatsapp)) + '</a>');
+      contato.push('<a href="https://wa.me/55' + fone + '?text=' + msg + '" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-conversa"/></svg>' + esc(telefone(fone)) + '</a>');
     }
     if (p.email) contato.push('<a href="mailto:' + esc(p.email) + '">' + esc(p.email) + '</a>');
-    var rotuloNum = 'pedido ' + esc(p.numero);
+    var rotuloNum = 'nº ' + esc(p.numero);
     var carimbo = p.cancelado
       ? '<span class="carimbo carimbo--cancelado" aria-hidden="true">Cancelado</span>'
       : concluido ? '<span class="carimbo carimbo--concluido" aria-hidden="true">Concluído</span>' : '';
     var situacao = p.cancelado ? 'Cancelado' : (p.pago ? 'Pago' : 'A pagar') + ', ' + (p.entregue ? 'entregue' : 'a entregar');
+    var avisoEmail = p.confirmacao === 'Falhou' || p.confirmacao === 'Sem cota'
+      ? '<p class="ticket__alerta">O e-mail de confirmação não foi enviado para esta pessoa.</p>' : '';
 
     return '<article class="ticket papel serrilha' + (p.cancelado ? ' ticket--cancelado' : '') + (concluido ? ' ticket--concluido' : '') + '" data-numero="' + esc(p.numero) + '" aria-labelledby="t-' + esc(p.numero) + '">' +
       carimbo +
@@ -266,6 +330,7 @@
       '<h3 class="ticket__nome">' + esc(p.nome) + '</h3>' +
       '<p class="sr-only">' + situacao + '</p>' +
       (contato.length ? '<div class="ticket__contato">' + contato.join('') + '</div>' : '') +
+      avisoEmail +
       '<ul class="ticket__itens">' + itens + '</ul>' +
       '<div class="ticket__total"><span>Total</span><strong>' + dinheiro(p.total) + (temPeso ? ' <small>+ peso</small>' : '') + '</strong></div>' +
       (p.obs ? '<p class="ticket__obs"><strong>Obs.:</strong> ' + esc(p.obs) + '</p>' : '') +
@@ -282,11 +347,11 @@
     var ligado = !!p[campo];
     return '<button type="button" class="alternar" data-campo="' + campo + '" aria-pressed="' + ligado + '">' +
       '<span class="alternar__caixa" aria-hidden="true">' + (ligado ? '<svg><use href="#i-check"/></svg>' : '') + '</span>' +
-      nome + '<span class="sr-only"> (' + rotuloNum + ')</span></button>';
+      nome + '<span class="sr-only"> (pedido ' + rotuloNum + ')</span></button>';
   }
 
   function renderTickets() {
-    var filtro = FILTROS.filter(function (f) { return f.id === estado.filtro; })[0] || FILTROS[0];
+    var filtro = filtroAtual();
     var termo = normaliza(estado.busca.trim());
     var lista = estado.dados.pedidos
       .filter(filtro.teste)
@@ -299,16 +364,18 @@
     if (!estado.dados.pedidos.length) {
       vazio.innerHTML = '<strong>Nenhum pedido na rodada ' + estado.dados.rodada + ' ainda.</strong>Quando alguém confirmar um pedido no site, ele aparece aqui.';
     } else if (termo) {
-      vazio.innerHTML = '<strong>Nada encontrado para "' + esc(estado.busca.trim()) + '".</strong>Confira o nome ou o número do pedido.';
+      var outros = estado.dados.pedidos.filter(function (p) { return combinaBusca(p, termo); }).length;
+      vazio.innerHTML = '<strong>Nada encontrado em ' + esc(filtro.nome) + ' para "' + esc(estado.busca.trim()) + '".</strong>' +
+        (outros ? 'Há ' + plural(outros, 'pedido', 'pedidos') + ' com esse termo em outros filtros.' : 'Confira o nome ou o número do pedido.');
     } else {
-      vazio.innerHTML = '<strong>Nenhum ticket neste filtro.</strong>Escolha outro filtro acima.';
+      vazio.innerHTML = '<strong>Nenhum ticket em ' + esc(filtro.nome) + '.</strong>Escolha outro filtro acima.';
     }
   }
 
   function renderResumo() {
     var d = estado.dados;
     var r = d.resumo;
-    var peso = r.temPeso ? ' <small>+ peso</small>' : '';
+    var peso = r.temPeso ? ' <small>+ itens pelo peso</small>' : '';
     $('numeros').innerHTML =
       numeroHTML('Pedidos', String(r.pedidos)) +
       numeroHTML('Itens', String(r.itens)) +
@@ -337,13 +404,14 @@
     $('copiar-produtos').disabled = !r.produtos.length;
 
     $('lista-pessoas').innerHTML = r.pessoas.length ? r.pessoas.map(function (p) {
-      var st = p.situacao === 'pago' ? '<span class="st st--ok">Pago</span>' : p.situacao === 'parcial' ? '<span class="st st--pendente">Pago em parte</span>' : '<span class="st st--pendente">A pagar</span>';
+      var st = p.situacao === 'pago' ? '<span class="st st--ok">Pago</span>'
+        : p.situacao === 'parcial' ? '<span class="st st--pendente">Falta ' + dinheiro(p.falta) + '</span>'
+        : '<span class="st st--pendente">A pagar</span>';
       return '<li><span class="lpes__nome">' + esc(p.nome) + '</span>' + st + '<span class="lpes__valor">' + dinheiro(p.total) + (p.temPeso ? ' <small>+ peso</small>' : '') + '</span></li>';
     }).join('') : '<li class="cartao__vazio">Ninguém pediu ainda.</li>';
     $('copiar-valores').disabled = !r.pessoas.length;
 
-    var interruptor = $('aberto');
-    interruptor.setAttribute('aria-checked', d.aberto ? 'true' : 'false');
+    $('aberto').setAttribute('aria-checked', d.aberto ? 'true' : 'false');
     if (document.activeElement !== $('aviso')) $('aviso').value = d.aviso || '';
     $('nova-rodada').textContent = 'Começar a rodada ' + (d.rodadaAtual + 1);
     $('rodada-desc').textContent = 'Os pedidos da rodada ' + d.rodadaAtual + ' continuam salvos e aparecem no seletor de rodada. Comece uma nova quando fechar este pedido com o DuJOÃO.';
@@ -365,18 +433,26 @@
   function marcar(numero, campo, valor) {
     var p = estado.dados.pedidos.filter(function (x) { return x.numero === numero; })[0];
     if (!p) return;
+    estado.mutacao++;
     var antes = p[campo];
+    // próximo ticket da lista, para o foco não se perder se este sair do filtro
+    var atual = document.querySelector('.ticket[data-numero="' + numero + '"]');
+    var vizinho = atual && (atual.nextElementSibling || atual.previousElementSibling);
+    var numVizinho = vizinho ? vizinho.getAttribute('data-numero') : null;
     p[campo] = valor;
     estado.novos.delete(numero);
     renderFiltros();
     renderTickets();
-    focarTicket(numero, campo);
-    chamar({ acao: 'marcar', senha: estado.senha, numero: numero, campo: campo, valor: valor }, 30000).then(function (r) {
+    if (document.querySelector('.ticket[data-numero="' + numero + '"]')) focarTicket(numero, campo);
+    else if (numVizinho && document.querySelector('.ticket[data-numero="' + numVizinho + '"]')) focarTicket(numVizinho, 'pago');
+    else $('tickets').focus({ preventScroll: true });
+    chamarPainel({ acao: 'marcar', numero: numero, campo: campo, valor: valor }).then(function (r) {
       if (!r || !r.ok) throw new Error((r && r.erro) || 'erro');
       var rotulos = { pago: valor ? 'marcado como pago' : 'voltou para a pagar', entregue: valor ? 'marcado como entregue' : 'voltou para a entregar', cancelado: valor ? 'cancelado' : 'reativado' };
       avisar('Pedido nº ' + numero + ' ' + rotulos[campo] + '.');
       recarregarDepois();
-    }).catch(function () {
+    }).catch(function (e) {
+      if (e && e.silencioso) return;
       p[campo] = antes;
       renderFiltros();
       renderTickets();
@@ -388,6 +464,7 @@
     var t = document.querySelector('.ticket[data-numero="' + numero + '"]');
     if (!t) return;
     var alvo = campo === 'cancelado' ? t.querySelector('.ticket__cancelar') : t.querySelector('.alternar[data-campo="' + campo + '"]');
+    if (!alvo) alvo = t.querySelector('.alternar, .ticket__cancelar');
     if (alvo) alvo.focus({ preventScroll: true });
   }
 
@@ -405,14 +482,15 @@
     $('form-entrada').addEventListener('submit', entrar);
     $('atualizar').addEventListener('click', function () { carregar(false); });
     $('sair').addEventListener('click', function () {
-      apagarSenha();
-      estado.senha = '';
+      apagarToken();
+      estado.token = '';
       estado.dados = null;
       estado.vistos = null;
       mostrarEntrada();
     });
     $('rodada').addEventListener('change', function (e) {
-      estado.rodada = parseInt(e.target.value, 10);
+      var r = parseInt(e.target.value, 10);
+      estado.rodadaFixa = estado.dados && r === estado.dados.rodadaAtual ? null : r;
       estado.vistos = null;
       estado.novos.clear();
       carregar(false);
@@ -434,6 +512,8 @@
       estado.filtro = b.getAttribute('data-filtro');
       renderFiltros();
       renderTickets();
+      var novo = document.querySelector('[data-filtro="' + estado.filtro + '"]');
+      if (novo) novo.focus({ preventScroll: true });
     });
     var buscaTimer;
     $('busca').addEventListener('input', function (e) {
@@ -453,8 +533,9 @@
         var p = estado.dados.pedidos.filter(function (x) { return x.numero === numero; })[0];
         if (!p) return;
         if (p.cancelado) { marcar(numero, 'cancelado', false); return; }
-        confirmar('Cancelar o pedido nº ' + numero + '?', 'O pedido de ' + p.nome + ' sai do resumo e dos totais. Dá para reativar depois.', 'Cancelar pedido').then(function (sim) {
+        confirmar(nbsp('Cancelar o pedido nº ' + numero + '?'), 'O pedido de ' + p.nome + ' sai do resumo e dos totais. Dá para reativar depois.', 'Cancelar pedido').then(function (sim) {
           if (sim) marcar(numero, 'cancelado', true);
+          else focarTicket(numero, 'cancelado');
         });
       }
     });
@@ -467,12 +548,14 @@
     $('aberto').addEventListener('click', function () {
       var novo = $('aberto').getAttribute('aria-checked') !== 'true';
       $('aberto').setAttribute('aria-checked', String(novo));
-      chamar({ acao: 'loja', senha: estado.senha, aberto: novo }, 30000).then(function (r) {
+      estado.mutacao++;
+      chamarPainel({ acao: 'loja', aberto: novo }).then(function (r) {
         if (!r || !r.ok) throw new Error('erro');
         estado.dados.aberto = r.aberto;
         renderTopo();
         avisar(r.aberto ? 'O site voltou a receber pedidos.' : 'O site parou de receber pedidos.');
-      }).catch(function () {
+      }).catch(function (e) {
+        if (e && e.silencioso) return;
         $('aberto').setAttribute('aria-checked', String(!novo));
         avisar('Não foi possível salvar. Tente de novo.');
       });
@@ -480,25 +563,28 @@
     $('form-aviso').addEventListener('submit', function (e) {
       e.preventDefault();
       var texto = $('aviso').value.trim();
-      chamar({ acao: 'loja', senha: estado.senha, aviso: texto }, 30000).then(function (r) {
+      estado.mutacao++;
+      chamarPainel({ acao: 'loja', aviso: texto }).then(function (r) {
         if (!r || !r.ok) throw new Error('erro');
         estado.dados.aviso = r.aviso;
         avisar(r.aviso ? 'Aviso salvo. Já aparece no site.' : 'Aviso removido do site.');
-      }).catch(function () { avisar('Não foi possível salvar o aviso.'); });
+      }).catch(function (err) { if (!err || !err.silencioso) avisar('Não foi possível salvar o aviso.'); });
     });
     $('nova-rodada').addEventListener('click', function () {
       var atual = estado.dados.rodadaAtual;
       confirmar('Começar a rodada ' + (atual + 1) + '?', 'Os pedidos da rodada ' + atual + ' continuam salvos. A partir de agora, os pedidos do site entram na rodada ' + (atual + 1) + '.', 'Começar rodada ' + (atual + 1)).then(function (sim) {
         if (!sim) return;
-        chamar({ acao: 'novaRodada', senha: estado.senha }, 30000).then(function (r) {
+        estado.mutacao++;
+        chamarPainel({ acao: 'novaRodada' }).then(function (r) {
           if (!r || !r.ok) throw new Error('erro');
-          estado.rodada = r.rodada;
+          estado.rodadaFixa = null;
+          estado.rodadaAtualVista = r.rodada;
           estado.vistos = null;
           estado.novos.clear();
           avisar('Rodada ' + r.rodada + ' começou.');
           trocarAba('tickets');
           carregar(false);
-        }).catch(function () { avisar('Não foi possível começar a nova rodada.'); });
+        }).catch(function (e) { if (!e || !e.silencioso) avisar('Não foi possível começar a nova rodada.'); });
       });
     });
 
@@ -513,8 +599,8 @@
   function iniciar() {
     ligarEventos();
     if (!CFG.urlPlanilha) { mostrarEntrada(); return; }
-    estado.senha = lerSenha();
-    if (estado.senha) carregar(false); else mostrarEntrada();
+    estado.token = lerToken();
+    if (estado.token) carregar(false); else mostrarEntrada();
   }
 
   iniciar();

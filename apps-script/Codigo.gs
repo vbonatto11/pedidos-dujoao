@@ -6,17 +6,15 @@
  *  - confere os preços pela aba "Produtos" (o site não decide preço);
  *  - envia o e-mail de confirmação para o cliente e um aviso para você;
  *  - mantém a aba "Resumo" com o total por produto e por pessoa;
- *  - alimenta o painel (painel.html), protegido pela senha abaixo.
+ *  - alimenta o painel (painel.html), protegido por senha.
  *
- * Passo a passo de instalação: veja o arquivo LEIAME.md no GitHub.
- * Depois de qualquer mudança aqui: Implantar > Gerenciar implantações >
- * editar (lápis) > Versão: Nova versão > Implantar. A URL continua a mesma.
+ * Instalação: veja o arquivo LEIAME.md no GitHub.
+ * A senha do painel NÃO fica no código: defina pelo menu DuJOÃO da planilha.
+ * Depois de mudar este código: Implantar > Gerenciar implantações > lápis >
+ * Versão: Nova versão > Implantar. A URL continua a mesma.
  */
 
 var CONFIG = {
-  // Senha do painel. Troque antes de publicar (mínimo 6 caracteres).
-  SENHA_PAINEL: 'TROQUE-ESTA-SENHA',
-
   // Nome que aparece como remetente dos e-mails.
   REMETENTE: 'Pedidos DuJOÃO',
 
@@ -34,18 +32,37 @@ var CONFIG = {
   AVISAR_A_CADA_PEDIDO: true,
 
   // Para onde vão os avisos. Vazio = o e-mail da conta dona desta planilha.
-  EMAIL_AVISO: ''
+  EMAIL_AVISO: '',
+
+  // Proteção contra abuso do formulário.
+  MAX_PEDIDOS_POR_EMAIL_HORA: 6,
+  MAX_PEDIDOS_10_MIN: 60
 };
 
 var FUSO = 'America/Sao_Paulo';
 var ABA = { PEDIDOS: 'Pedidos', ITENS: 'Itens', PRODUTOS: 'Produtos', RESUMO: 'Resumo' };
-var CAB_PEDIDOS = ['Nº', 'Data', 'Rodada', 'Nome', 'E-mail', 'WhatsApp', 'Itens', 'Total (R$)', 'Observações', 'Pago', 'Entregue', 'Cancelado', 'Envio'];
-var CAB_ITENS = ['Nº pedido', 'Data', 'Rodada', 'Cliente', 'ID produto', 'Produto', 'Qtd', 'Preço (R$)', 'Subtotal (R$)', 'Unidade'];
-var CAB_PRODUTOS = ['ID', 'Categoria', 'Produto', 'Nome curto', 'Detalhe', 'Preço (R$)', 'Unidade', 'Disponível'];
-var COL = { NUM: 0, DATA: 1, RODADA: 2, NOME: 3, EMAIL: 4, WHATS: 5, ITENS: 6, TOTAL: 7, OBS: 8, PAGO: 9, ENTREGUE: 10, CANCELADO: 11, ENVIO: 12 };
-var CAMPOS_MARCAVEIS = { pago: COL.PAGO, entregue: COL.ENTREGUE, cancelado: COL.CANCELADO };
 
-// Tabela de revenda inicial. Depois de configurar, edite na aba "Produtos".
+// As colunas são encontradas pelo nome do cabeçalho. Dá para mudar a ordem
+// ou inserir colunas novas; só não renomeie estes cabeçalhos.
+var CAMPOS = {
+  PEDIDOS: [
+    ['numero', 'Nº'], ['data', 'Data'], ['rodada', 'Rodada'], ['nome', 'Nome'], ['email', 'E-mail'],
+    ['whatsapp', 'WhatsApp'], ['itens', 'Itens'], ['total', 'Total (R$)'], ['obs', 'Observações'],
+    ['pago', 'Pago'], ['entregue', 'Entregue'], ['cancelado', 'Cancelado'],
+    ['confirmacao', 'Confirmação por e-mail'], ['envio', 'Envio']
+  ],
+  ITENS: [
+    ['numero', 'Nº pedido'], ['data', 'Data'], ['rodada', 'Rodada'], ['cliente', 'Cliente'],
+    ['id', 'ID produto'], ['produto', 'Produto'], ['qtd', 'Qtd'], ['preco', 'Preço (R$)'],
+    ['subtotal', 'Subtotal (R$)'], ['unidade', 'Unidade']
+  ],
+  PRODUTOS: [
+    ['id', 'ID'], ['categoria', 'Categoria'], ['produto', 'Produto'], ['curto', 'Nome curto'],
+    ['detalhe', 'Detalhe'], ['preco', 'Preço (R$)'], ['unidade', 'Unidade'], ['disponivel', 'Disponível']
+  ]
+};
+
+// Tabela de revenda inicial (mesma ordem de CAMPOS.PRODUTOS). Depois, edite na aba "Produtos".
 var CATALOGO_INICIAL = [
   ['torresmo-180', 'Prontos para consumo', 'Torresmo 180 g', '', 'Torresmos Premium, pote', 28, 'un', true],
   ['torresmo-60', 'Prontos para consumo', 'Torresmo 60 g', '', 'Torresmos Premium', 13, 'un', true],
@@ -69,58 +86,49 @@ var CATALOGO_INICIAL = [
 ];
 
 /* ======================================================================
-   Instalação e menu
+   Menu da planilha
    ====================================================================== */
-
-/** Rode esta função uma vez (Executar > configurar) depois de colar o código. */
-function configurar() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var props = PropertiesService.getScriptProperties();
-  props.setProperty('PLANILHA_ID', ss.getId());
-  if (!props.getProperty('RODADA')) props.setProperty('RODADA', '1');
-  if (!props.getProperty('ABERTO')) props.setProperty('ABERTO', 'sim');
-  try { ss.setSpreadsheetTimeZone(FUSO); } catch (e) { /* sem permissão para mudar o fuso */ }
-
-  var pedidos = garantirAba_(ss, ABA.PEDIDOS, CAB_PEDIDOS);
-  var itens = garantirAba_(ss, ABA.ITENS, CAB_ITENS);
-  var produtos = garantirAba_(ss, ABA.PRODUTOS, CAB_PRODUTOS);
-  garantirAba_(ss, ABA.RESUMO, null);
-
-  if (produtos.getLastRow() < 2) {
-    var faixa = produtos.getRange(2, 1, CATALOGO_INICIAL.length, CAB_PRODUTOS.length);
-    produtos.getRange(2, 8, CATALOGO_INICIAL.length, 1).insertCheckboxes();
-    faixa.setValues(CATALOGO_INICIAL);
-  }
-
-  formatarPedidos_(pedidos);
-  formatarItens_(itens);
-  formatarProdutos_(produtos);
-
-  // apaga a aba vazia que vem com a planilha nova
-  ss.getSheets().forEach(function (sh) {
-    var nome = sh.getName();
-    if (/^(P[aá]gina|Sheet|Planilha)\s?1$/i.test(nome) && sh.getLastRow() === 0 && ss.getSheets().length > 1) {
-      ss.deleteSheet(sh);
-    }
-  });
-
-  if (!props.getProperty('SEQ')) props.setProperty('SEQ', String(maiorNumero_()));
-  atualizarResumo();
-
-  var msg = senhaValida_()
-    ? 'Planilha pronta. Agora publique: Implantar > Nova implantação > App da Web.'
-    : 'Planilha pronta. Antes de publicar, troque a SENHA_PAINEL no início do código.';
-  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
-}
 
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('DuJOÃO')
+    .addItem('Definir senha do painel', 'definirSenha')
     .addItem('Atualizar resumo', 'atualizarResumo')
     .addItem('Começar nova rodada', 'menuNovaRodada')
     .addSeparator()
-    .addItem('Configurar planilha', 'configurar')
+    .addItem('Arrumar abas e formatação', 'configurar')
     .addToUi();
+}
+
+/** Pede a senha do painel e guarda nas propriedades do script (fora do código). */
+function definirSenha() {
+  var ui = SpreadsheetApp.getUi();
+  garantirEstrutura_();
+  var r = ui.prompt(
+    'Senha do painel',
+    'Crie uma senha com pelo menos 8 caracteres. Ela serve para entrar no painel de pedidos.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var senha = String(r.getResponseText() || '').trim();
+  if (senha.length < 8) {
+    ui.alert('A senha precisa ter pelo menos 8 caracteres. Use o menu DuJOÃO para tentar de novo.');
+    return;
+  }
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('SENHA_PAINEL', senha);
+  props.setProperty('SAL_PAINEL', Utilities.getUuid()); // desconecta sessões antigas do painel
+  ui.alert('Senha salva. O painel fica em ' + CONFIG.URL_SITE + 'painel.html');
+}
+
+/** Cria as abas que faltam, coloca os produtos iniciais e arruma a formatação. */
+function configurar() {
+  garantirEstrutura_(true);
+  atualizarResumo();
+  var msg = PropertiesService.getScriptProperties().getProperty('SENHA_PAINEL')
+    ? 'Planilha arrumada.'
+    : 'Planilha pronta. Agora defina a senha do painel no menu DuJOÃO.';
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
 }
 
 function menuNovaRodada() {
@@ -134,19 +142,25 @@ function menuNovaRodada() {
   if (r === ui.Button.OK) novaRodada_();
 }
 
-/** Atualiza o resumo quando você marca Pago / Entregue / Cancelado direto na planilha. */
+/** Atualiza o Resumo quando você mexe em Pago / Entregue / Cancelado / Total ou na aba Itens. */
 function onEdit(e) {
   try {
     if (!e || !e.range) return;
-    var sh = e.range.getSheet();
-    var col = e.range.getColumn();
-    if (sh.getName() === ABA.PEDIDOS && col >= COL.PAGO + 1 && col <= COL.CANCELADO + 1) atualizarResumo();
-    if (sh.getName() === ABA.ITENS) atualizarResumo();
-  } catch (err) { console.error(err); }
+    var nome = e.range.getSheet().getName();
+    if (nome === ABA.ITENS) { atualizarResumo(); return; }
+    if (nome !== ABA.PEDIDOS) return;
+    var col = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS).col;
+    var c1 = e.range.getColumn() - 1;
+    var c2 = e.range.getLastColumn() - 1;
+    var alvo = [col.pago, col.entregue, col.cancelado, col.total, col.nome, col.email];
+    if (alvo.some(function (c) { return c >= c1 && c <= c2; })) atualizarResumo();
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 /* ======================================================================
-   Web app: entrada do site e do painel
+   Web app
    ====================================================================== */
 
 function doGet(e) {
@@ -161,25 +175,30 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var dados;
+  var d;
   try {
-    dados = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    d = JSON.parse((e && e.postData && e.postData.contents) || '{}') || {};
   } catch (err) {
     return json_({ ok: false, codigo: 'validacao', erro: 'Pedido em formato inválido.' });
   }
   try {
-    var acao = dados && dados.acao;
-    if (acao === 'pedido') return json_(registrarPedido_(dados));
-    if (acao === 'catalogo') return json_(catalogoPublico_());
-    if (acao === 'painel' || acao === 'marcar' || acao === 'loja' || acao === 'novaRodada') {
-      var auth = autenticar_(dados.senha);
-      if (!auth.ok) return json_(auth);
-      if (acao === 'painel') return json_(dadosPainel_(dados.rodada));
-      if (acao === 'marcar') return json_(marcar_(dados));
-      if (acao === 'loja') return json_(configurarLoja_(dados));
-      return json_(novaRodada_());
+    switch (d.acao) {
+      case 'pedido': return json_(registrarPedido_(d));
+      case 'catalogo': return json_(catalogoPublico_());
+      case 'entrar': return json_(entrar_(d));
+      case 'painel':
+      case 'marcar':
+      case 'loja':
+      case 'novaRodada':
+        var auth = autenticar_(d.token);
+        if (!auth.ok) return json_(auth);
+        if (d.acao === 'painel') return json_(dadosPainel_(d.rodada));
+        if (d.acao === 'marcar') return json_(marcar_(d));
+        if (d.acao === 'loja') return json_(configurarLoja_(d));
+        return json_(novaRodada_());
+      default:
+        return json_({ ok: false, codigo: 'acao', erro: 'Ação desconhecida.' });
     }
-    return json_({ ok: false, codigo: 'acao', erro: 'Ação desconhecida.' });
   } catch (err) {
     console.error(err);
     return json_({ ok: false, codigo: 'interno', erro: 'Erro interno. Tente de novo em instantes.' });
@@ -191,13 +210,12 @@ function json_(obj) {
 }
 
 function catalogoPublico_() {
-  return {
-    ok: true,
-    produtos: lerCatalogo_(),
-    aberto: lojaAberta_(),
-    aviso: PropertiesService.getScriptProperties().getProperty('AVISO') || '',
-    rodada: rodadaAtual_()
-  };
+  garantirEstrutura_();
+  return { ok: true, produtos: lerCatalogo_(), aberto: lojaAberta_(), aviso: avisoAtual_(), rodada: rodadaAtual_() };
+}
+
+function catalogoExtra_(catalogo) {
+  return { produtos: catalogo || lerCatalogo_(), aberto: lojaAberta_(), aviso: avisoAtual_() };
 }
 
 /* ======================================================================
@@ -205,43 +223,47 @@ function catalogoPublico_() {
    ====================================================================== */
 
 function registrarPedido_(d) {
-  if (d.site) return { ok: false, codigo: 'validacao', erro: 'Não foi possível registrar o pedido.' };
-  if (!lojaAberta_()) return { ok: false, codigo: 'fechado', erro: 'Os pedidos estão fechados no momento.' };
+  garantirEstrutura_();
+  if (!lojaAberta_()) return { ok: false, codigo: 'fechado', erro: 'Os pedidos estão fechados no momento.', aberto: false, aviso: avisoAtual_() };
 
   var v = validarPedido_(d, lerCatalogo_());
   if (v.erro) return v.erro;
   var p = v.pedido;
 
-  var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  var lock = travar_(30000);
   var existente = null;
   try {
     if (p.idEnvio) existente = buscarPorEnvio_(p.idEnvio);
     if (!existente) {
+      var bloqueio = verificarLimite_(p.email);
+      if (bloqueio) return { ok: false, codigo: 'limite', erro: bloqueio };
       p.numero = formatarNumero_(proximoNumero_());
       p.data = new Date();
       p.rodada = rodadaAtual_();
       gravarPedido_(p);
+      contarPedido_(p.email);
       SpreadsheetApp.flush();
     }
   } finally {
-    lock.releaseLock();
+    soltar_(lock);
   }
 
-  if (existente) return respostaPedido_(existente, true);
+  if (existente) return respostaPedido_(existente, existente.confirmacao, true);
 
-  var emailOk = enviarEmailCliente_(p);
+  var confirmacao = enviarEmailCliente_(p);
+  try { gravarConfirmacao_(p.numero, confirmacao); } catch (err) { console.error(err); }
   if (CONFIG.AVISAR_A_CADA_PEDIDO) enviarEmailDono_(p);
   try { atualizarResumo(); } catch (err) { console.error(err); }
-  return respostaPedido_(p, emailOk);
+  return respostaPedido_(p, confirmacao, false);
 }
 
-function respostaPedido_(p, emailOk) {
+function respostaPedido_(p, confirmacao, repetido) {
   return {
     ok: true,
     numero: p.numero,
     email: p.email,
-    emailEnviado: !!emailOk,
+    emailEnviado: confirmacao === 'Enviada' ? true : (confirmacao ? false : null),
+    repetido: !!repetido,
     itens: p.itens.map(function (i) {
       return { id: i.id, nome: i.nome, qtd: i.qtd, preco: i.preco, subtotal: i.subtotal, unidade: i.unidade };
     }),
@@ -252,22 +274,28 @@ function respostaPedido_(p, emailOk) {
 
 /** Valida os dados do site e recalcula tudo com os preços da planilha. */
 function validarPedido_(d, catalogo) {
-  function erro(msg) { return { erro: { ok: false, codigo: 'validacao', erro: msg } }; }
+  function erro(msg, codigo, extra) {
+    var e = { ok: false, codigo: codigo || 'validacao', erro: msg };
+    if (extra) Object.keys(extra).forEach(function (k) { e[k] = extra[k]; });
+    return { erro: e };
+  }
   var nome = limparTexto_(d.nome, 80, false);
   if (nome.length < 2) return erro('Informe seu nome.');
+  if (/https?:|www\.|\.(com|net|org|br)\b|[@<>]/i.test(nome)) return erro('Escreva só o seu nome no campo Nome.');
   var email = limparTexto_(d.email, 120, false).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return erro('Confira o e-mail. Exemplo: nome@gmail.com');
-  var whatsapp = String(d.whatsapp || '').replace(/\D/g, '').slice(0, 13);
-  if (whatsapp.length < 10) whatsapp = '';
+  if (!emailValido_(email)) return erro('Confira o e-mail. Exemplo: nome@gmail.com');
+  var whatsapp = telefoneNacional_(d.whatsapp);
   var obs = limparTexto_(d.obs, 500, true);
   var idEnvio = String(d.idEnvio || '').replace(/[^\w\-]/g, '').slice(0, 64);
 
+  if (!catalogo.length) return erro('A loja ainda está sendo preparada. Tente de novo em alguns minutos.', 'configuracao');
   if (!Array.isArray(d.itens) || !d.itens.length) return erro('Escolha pelo menos um produto.');
   if (d.itens.length > 60) return erro('Pedido grande demais. Divida em dois pedidos.');
 
   var porId = {};
   catalogo.forEach(function (p) { porId[p.id] = p; });
   var qtdPorId = {};
+  var precoVisto = {};
   var ordem = [];
   for (var i = 0; i < d.itens.length; i++) {
     var it = d.itens[i] || {};
@@ -276,57 +304,80 @@ function validarPedido_(d, catalogo) {
     if (!id || !isFinite(qtd) || qtd < 1) return erro('Quantidade inválida no pedido.');
     if (!qtdPorId[id]) ordem.push(id);
     qtdPorId[id] = (qtdPorId[id] || 0) + qtd;
+    if (precoVisto[id] === undefined && it.preco !== undefined && it.preco !== null && isFinite(Number(it.preco))) {
+      precoVisto[id] = Math.round(Number(it.preco));
+    }
   }
 
   var itens = [];
   var total = 0;
+  var mudaram = [];
   for (var j = 0; j < ordem.length; j++) {
     var pid = ordem[j];
     var prod = porId[pid];
     if (!prod || !prod.disponivel) {
-      return { erro: { ok: false, codigo: 'indisponivel', erro: (prod ? prod.nome : 'Um dos produtos') + ' não está disponível no momento. Atualizamos a lista, confira o pedido.' } };
+      return erro((prod ? prod.nome : 'Um dos produtos') + ' esgotou. Atualizamos a lista: confira o seu pedido.', 'indisponivel', catalogoExtra_(catalogo));
     }
-    var q = Math.min(qtdPorId[pid], 99);
     var preco = centavos_(prod.preco);
+    if (precoVisto[pid] !== undefined && precoVisto[pid] !== preco) mudaram.push(prod.nome);
+    var q = Math.min(qtdPorId[pid], 99);
     var sub = prod.unidade === 'kg' ? null : preco * q;
     if (sub !== null) total += sub;
     itens.push({ id: pid, nome: prod.nome, qtd: q, preco: preco, subtotal: sub, unidade: prod.unidade });
+  }
+  if (mudaram.length) {
+    var msg = mudaram.length === 1 ? 'O preço de ' + mudaram[0] + ' mudou.' : 'Alguns preços mudaram.';
+    return erro(msg + ' Confira o pedido com os valores atualizados e confirme de novo.', 'preco', catalogoExtra_(catalogo));
   }
 
   return { pedido: { nome: nome, email: email, whatsapp: whatsapp, obs: obs, idEnvio: idEnvio, itens: itens, total: total } };
 }
 
+/** Grava os itens primeiro e a linha do pedido por último: a linha em "Pedidos" confirma o pedido. */
 function gravarPedido_(p) {
-  var ss = planilha_();
-  var sh = ss.getSheetByName(ABA.PEDIDOS);
-  var textoItens = p.itens.map(function (i) { return i.qtd + 'x ' + i.nome; }).join('\n');
-  sh.appendRow([
-    "'" + p.numero,
-    p.data,
-    p.rodada,
-    seguro_(p.nome),
-    seguro_(p.email),
-    p.whatsapp ? "'" + p.whatsapp : '',
-    seguro_(textoItens),
-    p.total / 100,
-    seguro_(p.obs),
-    false, false, false,
-    p.idEnvio
-  ]);
-  var linha = sh.getLastRow();
-  sh.getRange(linha, COL.PAGO + 1, 1, 3).insertCheckboxes();
-
-  var itensSh = ss.getSheetByName(ABA.ITENS);
+  var ti = aba_(ABA.ITENS, CAMPOS.ITENS);
   var linhas = p.itens.map(function (i) {
-    return ["'" + p.numero, p.data, p.rodada, seguro_(p.nome), i.id, seguro_(i.nome), i.qtd, i.preco / 100, i.subtotal === null ? '' : i.subtotal / 100, i.unidade];
+    return linhaPorCampos_(ti, {
+      numero: "'" + p.numero, data: p.data, rodada: p.rodada, cliente: texto_(p.nome),
+      id: texto_(i.id), produto: texto_(i.nome), qtd: i.qtd, preco: i.preco / 100,
+      subtotal: i.subtotal === null ? '' : i.subtotal / 100, unidade: i.unidade
+    });
   });
-  if (linhas.length) itensSh.getRange(itensSh.getLastRow() + 1, 1, linhas.length, CAB_ITENS.length).setValues(linhas);
+  if (linhas.length) {
+    var inicio = ti.sh.getLastRow() + 1;
+    garantirLinhas_(ti.sh, inicio + linhas.length - 1);
+    ti.sh.getRange(inicio, 1, linhas.length, linhas[0].length).setValues(linhas);
+  }
+
+  var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+  var linha = linhaPorCampos_(tp, {
+    numero: "'" + p.numero, data: p.data, rodada: p.rodada, nome: texto_(p.nome), email: texto_(p.email),
+    whatsapp: texto_(p.whatsapp), itens: texto_(p.itens.map(function (i) { return i.qtd + 'x ' + i.nome; }).join('\n')),
+    total: p.total / 100, obs: texto_(p.obs), pago: false, entregue: false, cancelado: false,
+    confirmacao: '', envio: texto_(p.idEnvio)
+  });
+  var n = tp.sh.getLastRow() + 1;
+  garantirLinhas_(tp.sh, n);
+  tp.sh.getRange(n, 1, 1, linha.length).setValues([linha]);
+  [tp.col.pago, tp.col.entregue, tp.col.cancelado].forEach(function (c) {
+    tp.sh.getRange(n, c + 1).insertCheckboxes();
+  });
 }
 
+function gravarConfirmacao_(numero, status) {
+  var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+  var linha = linhaDoPedido_(tp, numero);
+  if (linha) tp.sh.getRange(linha, tp.col.confirmacao + 1).setValue(status);
+}
+
+/** Procura um envio repetido (mesma tentativa do site) na rodada atual, nas últimas 24 horas. */
 function buscarPorEnvio_(idEnvio) {
-  var lista = lerPedidos_(null);
+  var rodada = rodadaAtual_();
+  var limite = Date.now() - 24 * 3600 * 1000;
+  var lista = lerPedidos_(rodada);
   for (var i = 0; i < lista.length; i++) {
-    if (lista[i].envio && lista[i].envio === idEnvio) return lista[i];
+    var p = lista[i];
+    if (p.envio === idEnvio && (!p.dataMs || p.dataMs >= limite)) return p;
   }
   return null;
 }
@@ -336,52 +387,46 @@ function buscarPorEnvio_(idEnvio) {
    ====================================================================== */
 
 function lerCatalogo_() {
-  var sh = planilha_().getSheetByName(ABA.PRODUTOS);
-  if (!sh) return [];
-  var n = sh.getLastRow() - 1;
-  if (n < 1) return [];
-  var vals = sh.getRange(2, 1, n, CAB_PRODUTOS.length).getValues();
+  var t = aba_(ABA.PRODUTOS, CAMPOS.PRODUTOS);
+  var vals = linhasDados_(t);
   var vistos = {};
   var lista = [];
   vals.forEach(function (r) {
-    var id = String(r[0] || '').trim();
-    var nome = String(r[2] || '').trim();
-    var preco = numero_(r[5]);
+    var id = String(r[t.col.id] || '').trim();
+    var nome = String(r[t.col.produto] || '').trim();
+    var preco = numero_(r[t.col.preco]);
     if (!id || !nome || vistos[id] || !isFinite(preco) || preco < 0) return;
     vistos[id] = true;
     lista.push({
       id: id,
-      categoria: String(r[1] || '').trim() || 'Outros',
+      categoria: String(r[t.col.categoria] || '').trim() || 'Outros',
       nome: nome,
-      curto: String(r[3] || '').trim(),
-      detalhe: String(r[4] || '').trim(),
+      curto: String(r[t.col.curto] || '').trim(),
+      detalhe: String(r[t.col.detalhe] || '').trim(),
       preco: Math.round(preco * 100) / 100,
-      unidade: /kg|quilo/i.test(String(r[6] || '')) ? 'kg' : 'un',
-      disponivel: verdadeiro_(r[7], true)
+      unidade: /kg|quilo/i.test(String(r[t.col.unidade] || '')) ? 'kg' : 'un',
+      disponivel: verdadeiro_(r[t.col.disponivel], true)
     });
   });
   return lista;
 }
 
 function lerItens_() {
-  var sh = planilha_().getSheetByName(ABA.ITENS);
+  var t = aba_(ABA.ITENS, CAMPOS.ITENS);
   var mapa = {};
-  if (!sh) return mapa;
-  var n = sh.getLastRow() - 1;
-  if (n < 1) return mapa;
-  sh.getRange(2, 1, n, CAB_ITENS.length).getValues().forEach(function (r) {
-    var numero = formatarNumero_(r[0]);
-    var qtd = Math.floor(numero_(r[6]));
+  linhasDados_(t).forEach(function (r) {
+    var numero = formatarNumero_(r[t.col.numero]);
+    var qtd = Math.floor(numero_(r[t.col.qtd]));
     if (!numero || !isFinite(qtd) || qtd < 1) return;
-    var unidade = /kg/i.test(String(r[9] || '')) ? 'kg' : 'un';
-    var subTxt = r[8];
-    var sub = unidade === 'kg' || subTxt === '' || subTxt === null ? null : centavos_(numero_(subTxt));
+    var unidade = /kg/i.test(String(r[t.col.unidade] || '')) ? 'kg' : 'un';
+    var subBruto = r[t.col.subtotal];
+    var sub = unidade === 'kg' || subBruto === '' || subBruto === null ? null : centavos_(numero_(subBruto));
     if (sub !== null && !isFinite(sub)) sub = null;
     (mapa[numero] = mapa[numero] || []).push({
-      id: String(r[4] || '').trim(),
-      nome: String(r[5] || '').trim(),
+      id: String(r[t.col.id] || '').trim(),
+      nome: String(r[t.col.produto] || '').trim(),
       qtd: qtd,
-      preco: centavos_(numero_(r[7])) || 0,
+      preco: centavos_(numero_(r[t.col.preco])) || 0,
       subtotal: sub,
       unidade: unidade
     });
@@ -390,39 +435,39 @@ function lerItens_() {
 }
 
 function lerPedidos_(rodada) {
-  var sh = planilha_().getSheetByName(ABA.PEDIDOS);
-  if (!sh) return [];
-  var n = sh.getLastRow() - 1;
-  if (n < 1) return [];
-  var vals = sh.getRange(2, 1, n, CAB_PEDIDOS.length).getValues();
+  var t = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+  var c = t.col;
+  var vals = linhasDados_(t);
+  if (!vals.length) return [];
   var itensPorNumero = lerItens_();
   var lista = [];
-  vals.forEach(function (r, i) {
-    var numero = formatarNumero_(r[COL.NUM]);
+  vals.forEach(function (r) {
+    var numero = formatarNumero_(r[c.numero]);
     if (!numero) return;
-    var rod = parseInt(r[COL.RODADA], 10) || 1;
+    var rod = parseInt(r[c.rodada], 10) || 1;
     if (rodada && rod !== rodada) return;
     var itens = itensPorNumero[numero] || [];
-    var totalPlanilha = numero_(r[COL.TOTAL]);
+    var totalPlanilha = numero_(r[c.total]);
     var totalItens = itens.reduce(function (s, it) { return s + (it.subtotal || 0); }, 0);
-    var data = r[COL.DATA] instanceof Date ? r[COL.DATA] : new Date(r[COL.DATA]);
-    var dataValida = data instanceof Date && !isNaN(data.getTime());
+    var data = r[c.data] instanceof Date ? r[c.data] : new Date(r[c.data]);
+    var dataOk = data instanceof Date && !isNaN(data.getTime());
     lista.push({
-      linha: i + 2,
       numero: numero,
-      data: dataValida ? data.toISOString() : '',
-      dataTexto: dataValida ? Utilities.formatDate(data, FUSO, 'dd/MM HH:mm') : String(r[COL.DATA] || ''),
+      data: dataOk ? data.toISOString() : '',
+      dataMs: dataOk ? data.getTime() : 0,
+      dataTexto: dataOk ? Utilities.formatDate(data, FUSO, 'dd/MM HH:mm') : String(r[c.data] || ''),
       rodada: rod,
-      nome: String(r[COL.NOME] || '').trim(),
-      email: String(r[COL.EMAIL] || '').trim(),
-      whatsapp: String(r[COL.WHATS] || '').replace(/\D/g, ''),
-      obs: String(r[COL.OBS] || '').trim(),
+      nome: String(r[c.nome] || '').trim(),
+      email: String(r[c.email] || '').trim().toLowerCase(),
+      whatsapp: telefoneNacional_(r[c.whatsapp]),
+      obs: String(r[c.obs] || '').trim(),
       itens: itens,
       total: isFinite(totalPlanilha) ? centavos_(totalPlanilha) : totalItens,
-      pago: verdadeiro_(r[COL.PAGO], false),
-      entregue: verdadeiro_(r[COL.ENTREGUE], false),
-      cancelado: verdadeiro_(r[COL.CANCELADO], false),
-      envio: String(r[COL.ENVIO] || '')
+      pago: verdadeiro_(r[c.pago], false),
+      entregue: verdadeiro_(r[c.entregue], false),
+      cancelado: verdadeiro_(r[c.cancelado], false),
+      confirmacao: String(r[c.confirmacao] || ''),
+      envio: String(r[c.envio] || '')
     });
   });
   return lista;
@@ -432,37 +477,56 @@ function lerPedidos_(rodada) {
    Painel
    ====================================================================== */
 
-function autenticar_(senha) {
-  if (!senhaValida_()) {
-    return { ok: false, codigo: 'senha-padrao', erro: 'Defina uma senha em CONFIG.SENHA_PAINEL no Apps Script e publique uma nova versão.' };
-  }
-  if (String(senha || '') !== String(CONFIG.SENHA_PAINEL)) {
-    Utilities.sleep(1200);
+function entrar_(d) {
+  garantirEstrutura_();
+  var senha = PropertiesService.getScriptProperties().getProperty('SENHA_PAINEL');
+  if (!senha) return { ok: false, codigo: 'sem-senha', erro: 'A senha do painel ainda não foi criada. Na planilha, use o menu DuJOÃO > Definir senha do painel.' };
+  var cache = CacheService.getScriptCache();
+  var falhas = parseInt(cache.get('falhas-senha') || '0', 10) || 0;
+  if (falhas >= 8) return { ok: false, codigo: 'bloqueado', erro: 'Muitas tentativas erradas. Espere 10 minutos e tente de novo.' };
+  if (String(d.senha || '') !== senha) {
+    cache.put('falhas-senha', String(falhas + 1), 600);
     return { ok: false, codigo: 'senha', erro: 'Senha incorreta.' };
   }
+  cache.remove('falhas-senha');
+  var dados = dadosPainel_(d.rodada);
+  dados.token = tokenPainel_();
+  return dados;
+}
+
+function autenticar_(token) {
+  var t = tokenPainel_();
+  if (!t) return { ok: false, codigo: 'sem-senha', erro: 'A senha do painel ainda não foi criada. Na planilha, use o menu DuJOÃO > Definir senha do painel.' };
+  if (String(token || '') !== t) return { ok: false, codigo: 'sessao', erro: 'Entre de novo com a senha do painel.' };
   return { ok: true };
 }
 
-function senhaValida_() {
-  var s = String(CONFIG.SENHA_PAINEL || '');
-  return s.length >= 6 && s !== 'TROQUE-ESTA-SENHA';
+/** Chave de sessão derivada da senha. Trocar a senha desconecta todos os aparelhos. */
+function tokenPainel_() {
+  var props = PropertiesService.getScriptProperties();
+  var senha = props.getProperty('SENHA_PAINEL');
+  if (!senha) return null;
+  var sal = props.getProperty('SAL_PAINEL');
+  if (!sal) { sal = Utilities.getUuid(); props.setProperty('SAL_PAINEL', sal); }
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sal + ':' + senha, Utilities.Charset.UTF_8);
+  return bytes.map(function (b) { var h = (b < 0 ? b + 256 : b).toString(16); return h.length === 1 ? '0' + h : h; }).join('');
 }
 
 function dadosPainel_(rodadaPedida) {
+  garantirEstrutura_();
   var atual = rodadaAtual_();
   var rodada = parseInt(rodadaPedida, 10);
   if (!rodada || rodada < 1 || rodada > atual) rodada = atual;
   var pedidos = lerPedidos_(rodada);
-  var resumo = calcularResumo_(pedidos, lerCatalogo_(), rodada);
   return {
     ok: true,
     rodada: rodada,
     rodadaAtual: atual,
     aberto: lojaAberta_(),
-    aviso: PropertiesService.getScriptProperties().getProperty('AVISO') || '',
+    aviso: avisoAtual_(),
     planilha: planilha_().getUrl(),
     pedidos: pedidos.map(pedidoPublico_),
-    resumo: resumo
+    resumo: calcularResumo_(pedidos, lerCatalogo_(), rodada)
   };
 }
 
@@ -471,36 +535,32 @@ function pedidoPublico_(p) {
     numero: p.numero, data: p.data, dataTexto: p.dataTexto, rodada: p.rodada,
     nome: p.nome, email: p.email, whatsapp: p.whatsapp, obs: p.obs,
     itens: p.itens, total: p.total,
-    pago: p.pago, entregue: p.entregue, cancelado: p.cancelado
+    pago: p.pago, entregue: p.entregue, cancelado: p.cancelado,
+    confirmacao: p.confirmacao
   };
 }
 
 function marcar_(d) {
-  var coluna = CAMPOS_MARCAVEIS[d.campo];
-  if (coluna === undefined) return { ok: false, codigo: 'validacao', erro: 'Campo inválido.' };
+  var campos = { pago: 1, entregue: 1, cancelado: 1 };
+  if (!campos[d.campo]) return { ok: false, codigo: 'validacao', erro: 'Campo inválido.' };
   var numero = formatarNumero_(d.numero);
   if (!numero) return { ok: false, codigo: 'validacao', erro: 'Pedido inválido.' };
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  var achado = null;
+  var lock = travar_(20000);
+  var achou = false;
   try {
-    var sh = planilha_().getSheetByName(ABA.PEDIDOS);
-    var n = sh.getLastRow() - 1;
-    if (n >= 1) {
-      var nums = sh.getRange(2, 1, n, 1).getValues();
-      for (var i = 0; i < nums.length; i++) {
-        if (formatarNumero_(nums[i][0]) === numero) {
-          sh.getRange(i + 2, coluna + 1).setValue(!!d.valor);
-          achado = i + 2;
-          break;
-        }
-      }
+    var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+    var linha = linhaDoPedido_(tp, numero);
+    if (linha) {
+      var cel = tp.sh.getRange(linha, tp.col[d.campo] + 1);
+      cel.insertCheckboxes();
+      cel.setValue(!!d.valor);
+      achou = true;
     }
     SpreadsheetApp.flush();
   } finally {
-    lock.releaseLock();
+    soltar_(lock);
   }
-  if (!achado) return { ok: false, codigo: 'nao-encontrado', erro: 'Pedido nº ' + numero + ' não encontrado.' };
+  if (!achou) return { ok: false, codigo: 'nao-encontrado', erro: 'Pedido nº ' + numero + ' não encontrado.' };
   try { atualizarResumo(); } catch (err) { console.error(err); }
   var lista = lerPedidos_(null).filter(function (p) { return p.numero === numero; });
   return { ok: true, pedido: lista.length ? pedidoPublico_(lista[0]) : null };
@@ -510,18 +570,17 @@ function configurarLoja_(d) {
   var props = PropertiesService.getScriptProperties();
   if (typeof d.aberto === 'boolean') props.setProperty('ABERTO', d.aberto ? 'sim' : 'nao');
   if (typeof d.aviso === 'string') props.setProperty('AVISO', limparTexto_(d.aviso, 200, false));
-  return { ok: true, aberto: lojaAberta_(), aviso: props.getProperty('AVISO') || '' };
+  return { ok: true, aberto: lojaAberta_(), aviso: avisoAtual_() };
 }
 
 function novaRodada_() {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  var lock = travar_(20000);
   var nova;
   try {
     nova = rodadaAtual_() + 1;
     PropertiesService.getScriptProperties().setProperty('RODADA', String(nova));
   } finally {
-    lock.releaseLock();
+    soltar_(lock);
   }
   try { atualizarResumo(); } catch (err) { console.error(err); }
   return { ok: true, rodada: nova };
@@ -534,43 +593,53 @@ function novaRodada_() {
 function calcularResumo_(pedidos, catalogo, rodada) {
   var ordem = {};
   var categoriaDe = {};
-  var ordemCategoria = {};
-  catalogo.forEach(function (p, i) {
-    ordem[p.id] = i;
-    categoriaDe[p.id] = p.categoria;
-    if (ordemCategoria[p.categoria] === undefined) ordemCategoria[p.categoria] = i;
-  });
+  catalogo.forEach(function (p, i) { ordem[p.id] = i; categoriaDe[p.id] = p.categoria; });
 
   var ativos = pedidos.filter(function (p) { return !p.cancelado; });
-  var produtos = {};
+
+  // Pessoas: agrupadas pelo e-mail (duas "Ana" com e-mails diferentes são pessoas diferentes).
   var pessoas = {};
   var ordemPessoas = [];
-  var t = { itens: 0, total: 0, pago: 0, temPeso: false };
-
   ativos.forEach(function (ped) {
-    var chave = chavePessoa_(ped.nome);
-    if (!pessoas[chave]) { pessoas[chave] = { nome: ped.nome, total: 0, pago: 0, pedidos: [], temPeso: false, todosPagos: true }; ordemPessoas.push(chave); }
+    var chave = ped.email || ('nome:' + chavePessoa_(ped.nome));
+    if (!pessoas[chave]) {
+      pessoas[chave] = { chave: chave, nome: ped.nome, email: ped.email, total: 0, pago: 0, pedidos: [], temPeso: false, todosPagos: true };
+      ordemPessoas.push(chave);
+    }
     var pes = pessoas[chave];
     pes.pedidos.push(ped.numero);
     pes.total += ped.total;
     if (ped.pago) pes.pago += ped.total; else pes.todosPagos = false;
+    if (ped.itens.some(function (i) { return i.subtotal === null; })) pes.temPeso = true;
+  });
+  // Nomes iguais de pessoas diferentes ganham o início do e-mail para não confundir.
+  var contagem = {};
+  ordemPessoas.forEach(function (k) { var n = chavePessoa_(pessoas[k].nome); contagem[n] = (contagem[n] || 0) + 1; });
+  ordemPessoas.forEach(function (k) {
+    var p = pessoas[k];
+    p.rotulo = contagem[chavePessoa_(p.nome)] > 1 && p.email ? p.nome + ' (' + p.email.split('@')[0] + ')' : p.nome;
+  });
+
+  var produtos = {};
+  var t = { itens: 0, total: 0, pago: 0, temPeso: false };
+  ativos.forEach(function (ped) {
+    var chave = ped.email || ('nome:' + chavePessoa_(ped.nome));
     t.total += ped.total;
     if (ped.pago) t.pago += ped.total;
-
     ped.itens.forEach(function (it) {
-      var chaveProd = it.id || it.nome;
-      if (!produtos[chaveProd]) {
-        produtos[chaveProd] = {
+      var k = it.id || it.nome;
+      if (!produtos[k]) {
+        produtos[k] = {
           id: it.id, nome: it.nome, categoria: categoriaDe[it.id] || 'Outros',
           qtd: 0, valor: 0, temPeso: false, quem: {}, ordemQuem: [],
           ordem: ordem[it.id] !== undefined ? ordem[it.id] : 9999
         };
       }
-      var pr = produtos[chaveProd];
+      var pr = produtos[k];
       pr.qtd += it.qtd;
       t.itens += it.qtd;
-      if (it.subtotal === null) { pr.temPeso = true; pes.temPeso = true; t.temPeso = true; } else { pr.valor += it.subtotal; }
-      if (!pr.quem[chave]) { pr.quem[chave] = { nome: ped.nome, qtd: 0 }; pr.ordemQuem.push(chave); }
+      if (it.subtotal === null) { pr.temPeso = true; t.temPeso = true; } else { pr.valor += it.subtotal; }
+      if (!pr.quem[chave]) { pr.quem[chave] = { nome: pessoas[chave].rotulo, qtd: 0 }; pr.ordemQuem.push(chave); }
       pr.quem[chave].qtd += it.qtd;
     });
   });
@@ -583,9 +652,12 @@ function calcularResumo_(pedidos, catalogo, rodada) {
     };
   }).sort(function (a, b) { return a.ordem - b.ordem || a.nome.localeCompare(b.nome); });
 
-  var listaPessoas = ordemPessoas.map(function (c) {
-    var p = pessoas[c];
-    return { nome: p.nome, total: p.total, pago: p.pago, pedidos: p.pedidos, temPeso: p.temPeso, situacao: p.todosPagos ? 'pago' : (p.pago > 0 ? 'parcial' : 'a pagar') };
+  var listaPessoas = ordemPessoas.map(function (k) {
+    var p = pessoas[k];
+    return {
+      nome: p.rotulo, total: p.total, pago: p.pago, falta: p.total - p.pago, pedidos: p.pedidos, temPeso: p.temPeso,
+      situacao: p.todosPagos ? 'pago' : (p.pago > 0 ? 'parcial' : 'a pagar')
+    };
   });
 
   return {
@@ -607,12 +679,12 @@ function calcularResumo_(pedidos, catalogo, rodada) {
 function textoProdutos_(produtos, t, rodada) {
   if (!produtos.length) return 'Nenhum pedido na rodada ' + rodada + ' ainda.';
   var l = ['*Pedido DuJOÃO, rodada ' + rodada + '*'];
-  var catAtual = null;
+  var cat = null;
   produtos.forEach(function (p) {
-    if (p.categoria !== catAtual) {
-      catAtual = p.categoria;
+    if (p.categoria !== cat) {
+      cat = p.categoria;
       l.push('');
-      l.push(String(catAtual).toUpperCase());
+      l.push(String(cat).toUpperCase());
     }
     var quem = p.quem.map(function (q) { return q.qtd + ' ' + q.nome; }).join(', ');
     l.push('• *' + p.nome + '*: ' + p.qtd + ' (' + quem + ')' + (p.temPeso ? ', pelo peso' : ''));
@@ -626,20 +698,37 @@ function textoValores_(pessoas, t, rodada) {
   if (!pessoas.length) return 'Nenhum pedido na rodada ' + rodada + ' ainda.';
   var l = ['*Valores por pessoa, rodada ' + rodada + '*', ''];
   pessoas.forEach(function (p) {
-    l.push('• *' + p.nome + '*: ' + reais_(p.total) + (p.temPeso ? ' + peso' : '') + (p.situacao === 'pago' ? ' (pago)' : ''));
+    var extra = '';
+    if (p.situacao === 'pago') extra = ' (pago)';
+    else if (p.situacao === 'parcial') extra = ' (pago ' + reais_(p.pago) + ', falta ' + reais_(p.falta) + ')';
+    l.push('• *' + p.nome + '*: ' + reais_(p.total) + (p.temPeso ? ' + peso' : '') + extra);
   });
   l.push('');
   l.push('*Total:* ' + reais_(t.total) + (t.temPeso ? ' + itens pelo peso' : ''));
   return l.join('\n');
 }
 
-/** Reescreve a aba "Resumo" com a rodada atual. Também fica no menu DuJOÃO. */
+/** Reescreve a aba "Resumo" com a rodada atual. Também está no menu DuJOÃO. */
 function atualizarResumo() {
+  var lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) lock = null;
+  } catch (e) {
+    lock = null;
+  }
+  try {
+    return escreverResumo_();
+  } finally {
+    if (lock) soltar_(lock);
+  }
+}
+
+function escreverResumo_() {
   var ss = planilha_();
   var rodada = rodadaAtual_();
   var r = calcularResumo_(lerPedidos_(rodada), lerCatalogo_(), rodada);
   var sh = ss.getSheetByName(ABA.RESUMO) || ss.insertSheet(ABA.RESUMO);
-  sh.clear();
 
   var linhas = [];
   linhas.push(['Resumo da rodada ' + rodada, '', '', '']);
@@ -648,7 +737,7 @@ function atualizarResumo() {
   var cabProd = linhas.length + 1;
   linhas.push(['Produto', 'Qtd', 'Quem pediu', 'Valor (R$)']);
   r.produtos.forEach(function (p) {
-    linhas.push([seguro_(p.nome), p.qtd, seguro_(p.quem.map(function (q) { return q.qtd + ' ' + q.nome; }).join(', ')), p.temPeso && !p.valor ? 'pelo peso' : p.valor / 100]);
+    linhas.push([texto_(p.nome), p.qtd, texto_(p.quem.map(function (q) { return q.qtd + ' ' + q.nome; }).join(', ')), p.temPeso && !p.valor ? 'pelo peso' : p.valor / 100]);
   });
   linhas.push(['Total', r.itens, r.pedidos + (r.pedidos === 1 ? ' pedido' : ' pedidos'), r.total / 100]);
   var fimProd = linhas.length;
@@ -656,7 +745,8 @@ function atualizarResumo() {
   var cabPes = linhas.length + 1;
   linhas.push(['Pessoa', 'Pedidos', 'Situação', 'Valor (R$)']);
   r.pessoas.forEach(function (p) {
-    linhas.push([seguro_(p.nome), "'" + p.pedidos.join(', '), p.situacao === 'pago' ? 'Pago' : p.situacao === 'parcial' ? 'Pago em parte' : 'A pagar', p.total / 100]);
+    var sit = p.situacao === 'pago' ? 'Pago' : p.situacao === 'parcial' ? 'Falta ' + reais_(p.falta) : 'A pagar';
+    linhas.push([texto_(p.nome), "'" + p.pedidos.join(', '), sit, p.total / 100]);
   });
   linhas.push(['Recebido', '', '', r.pago / 100]);
   linhas.push(['A receber', '', '', r.aReceber / 100]);
@@ -664,9 +754,14 @@ function atualizarResumo() {
   linhas.push(['', '', '', '']);
   var cabTexto = linhas.length + 1;
   linhas.push(['Mensagem para o WhatsApp (selecione as linhas abaixo e copie)', '', '', '']);
-  r.textoProdutos.split('\n').forEach(function (t) { linhas.push([seguro_(t), '', '', '']); });
+  r.textoProdutos.split('\n').forEach(function (t) { linhas.push([texto_(t), '', '', '']); });
 
+  sh.clearFormats();
+  garantirLinhas_(sh, linhas.length);
   sh.getRange(1, 1, linhas.length, 4).setValues(linhas);
+  var sobra = sh.getMaxRows() - linhas.length;
+  if (sobra > 0) sh.getRange(linhas.length + 1, 1, sobra, Math.max(4, sh.getMaxColumns())).clearContent();
+
   sh.getRange(1, 1).setFontSize(16).setFontWeight('bold').setFontColor('#641312');
   sh.getRange(2, 1).setFontColor('#6e5551');
   [cabProd, cabPes].forEach(function (lin) {
@@ -676,11 +771,11 @@ function atualizarResumo() {
   sh.getRange(fimPes - 1, 1, 2, 4).setFontWeight('bold').setBackground('#fff0d2');
   sh.getRange(cabTexto, 1).setFontWeight('bold').setFontColor('#641312');
   sh.getRange(cabProd + 1, 4, fimPes - cabProd, 1).setNumberFormat('"R$" #,##0.00');
-  sh.setColumnWidth(1, 330);
-  sh.setColumnWidth(2, 80);
-  sh.setColumnWidth(3, 420);
-  sh.setColumnWidth(4, 110);
   sh.getRange(cabProd, 3, fimProd - cabProd + 1, 1).setWrap(true);
+  sh.setColumnWidth(1, 330);
+  sh.setColumnWidth(2, 90);
+  sh.setColumnWidth(3, 420);
+  sh.setColumnWidth(4, 120);
   return r;
 }
 
@@ -692,7 +787,12 @@ function emailDono_() {
   return CONFIG.EMAIL_AVISO || Session.getEffectiveUser().getEmail();
 }
 
+function cotaEmail_() {
+  try { return MailApp.getRemainingDailyQuota(); } catch (e) { return 99; }
+}
+
 function enviarEmailCliente_(p) {
+  if (cotaEmail_() < 1) return 'Sem cota';
   try {
     MailApp.sendEmail({
       to: p.email,
@@ -702,36 +802,42 @@ function enviarEmailCliente_(p) {
       name: CONFIG.REMETENTE,
       replyTo: emailDono_()
     });
-    return true;
+    return 'Enviada';
   } catch (err) {
     console.error('Falha no e-mail do cliente', err);
-    return false;
+    return 'Falhou';
   }
 }
 
 function enviarEmailDono_(p) {
+  if (cotaEmail_() < 1) return;
+  var msg = {
+    to: emailDono_(),
+    subject: 'Novo pedido nº ' + p.numero + ': ' + p.nome + ', ' + reais_(p.total),
+    htmlBody: emailHtml_(p, true),
+    body: emailTexto_(p, true),
+    name: CONFIG.REMETENTE,
+    replyTo: p.email
+  };
   try {
-    MailApp.sendEmail({
-      to: emailDono_(),
-      subject: 'Novo pedido nº ' + p.numero + ': ' + p.nome + ', ' + reais_(p.total),
-      htmlBody: emailHtml_(p, true),
-      body: emailTexto_(p, true),
-      name: CONFIG.REMETENTE,
-      replyTo: p.email
-    });
+    MailApp.sendEmail(msg);
   } catch (err) {
-    console.error('Falha no aviso de pedido', err);
+    try { delete msg.replyTo; MailApp.sendEmail(msg); } catch (err2) { console.error('Falha no aviso de pedido', err2); }
   }
+}
+
+function unidadeTexto_(i) {
+  if (i.unidade === 'kg') return i.qtd + (i.qtd === 1 ? ' peça' : ' peças') + ', ' + reais_(i.preco) + ' o kg';
+  return i.qtd + ' × ' + reais_(i.preco);
 }
 
 function emailHtml_(p, paraDono) {
   var temPeso = p.itens.some(function (i) { return i.subtotal === null; });
   var linhas = p.itens.map(function (i) {
     var valor = i.subtotal === null ? 'pelo peso' : reais_(i.subtotal);
-    var unit = i.unidade === 'kg' ? reais_(i.preco) + ' o kg' : i.qtd + ' × ' + reais_(i.preco);
     return '<tr>' +
       '<td style="padding:10px 0;border-bottom:1px dashed #e2d3cd;font-size:15px;line-height:1.35">' +
-        '<strong>' + esc_(i.nome) + '</strong><br><span style="color:#6e5551;font-size:13px">' + esc_(unit) + '</span></td>' +
+        '<strong>' + esc_(i.nome) + '</strong><br><span style="color:#6e5551;font-size:13px">' + esc_(unidadeTexto_(i)) + '</span></td>' +
       '<td style="padding:10px 0 10px 12px;border-bottom:1px dashed #e2d3cd;font-size:15px;text-align:right;white-space:nowrap;vertical-align:top"><strong>' + esc_(valor) + '</strong></td>' +
       '</tr>';
   }).join('');
@@ -739,10 +845,11 @@ function emailHtml_(p, paraDono) {
   var contato = paraDono
     ? '<p style="margin:12px 0 0;font-size:15px;line-height:1.6"><strong>' + esc_(p.nome) + '</strong><br>' +
       '<a href="mailto:' + esc_(p.email) + '" style="color:#641312">' + esc_(p.email) + '</a>' +
-      (p.whatsapp ? '<br><a href="https://wa.me/' + esc_(numeroWhats_(p.whatsapp)) + '" style="color:#641312">WhatsApp ' + esc_(telefone_(p.whatsapp)) + '</a>' : '') + '</p>'
+      (p.whatsapp ? '<br><a href="https://wa.me/55' + esc_(p.whatsapp) + '" style="color:#641312">WhatsApp ' + esc_(telefone_(p.whatsapp)) + '</a>' : '') + '</p>'
     : '<p style="margin:12px 0 0;font-size:15px;line-height:1.5">Olá, ' + esc_(primeiroNome_(p.nome)) + '! Recebemos seu pedido. Confira os itens:</p>';
 
-  var obs = p.obs
+  // As observações só vão no aviso para você (evita que o formulário seja usado para mandar texto a terceiros).
+  var obs = paraDono && p.obs
     ? '<p style="margin:16px 0 0;padding:12px;background:#f7f0eb;border-radius:10px;font-size:14px;line-height:1.5"><strong>Observações:</strong> ' + esc_(p.obs).replace(/\n/g, '<br>') + '</p>'
     : '';
 
@@ -772,7 +879,7 @@ function emailHtml_(p, paraDono) {
       '<tr><td style="padding:8px 24px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + linhas + '</table></td></tr>' +
       '<tr><td style="padding:14px 24px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>' +
         '<td style="font-size:16px;font-weight:bold">Total</td>' +
-        '<td style="text-align:right;font-family:Georgia,serif;font-size:24px;font-weight:bold;color:#641312">' + reais_(p.total) + '</td></tr>' +
+        '<td style="text-align:right;font-size:24px;font-weight:bold;color:#641312">' + reais_(p.total) + '</td></tr>' +
         (temPeso ? '<tr><td></td><td style="text-align:right;font-size:13px;color:#6e5551">+ itens cobrados pelo peso</td></tr>' : '') +
       '</table></td></tr>' +
       '<tr><td style="padding:0 24px 24px">' + obs + pagamento + rodape + '</td></tr>' +
@@ -785,21 +892,137 @@ function emailTexto_(p, paraDono) {
   var l = [];
   l.push((paraDono ? 'Novo pedido nº ' : 'Pedido nº ') + p.numero + (paraDono ? '' : ' confirmado'));
   l.push('');
-  if (paraDono) {
-    l.push(p.nome + ' <' + p.email + '>' + (p.whatsapp ? ', WhatsApp ' + telefone_(p.whatsapp) : ''));
-  } else {
-    l.push('Olá, ' + primeiroNome_(p.nome) + '! Recebemos seu pedido:');
-  }
+  if (paraDono) l.push(p.nome + ' <' + p.email + '>' + (p.whatsapp ? ', WhatsApp ' + telefone_(p.whatsapp) : ''));
+  else l.push('Olá, ' + primeiroNome_(p.nome) + '! Recebemos seu pedido:');
   l.push('');
   p.itens.forEach(function (i) {
-    l.push('- ' + i.qtd + 'x ' + i.nome + ': ' + (i.subtotal === null ? 'pelo peso' : reais_(i.subtotal)));
+    l.push('- ' + i.nome + ' (' + unidadeTexto_(i) + '): ' + (i.subtotal === null ? 'pelo peso' : reais_(i.subtotal)));
   });
   l.push('');
-  l.push('Total: ' + reais_(p.total) + (p.itens.some(function (i) { return i.subtotal === null; }) ? ' + itens pelo peso' : ''));
-  if (p.obs) l.push('Observações: ' + p.obs);
+  l.push('Total: ' + reais_(p.total) + (p.itens.some(function (i) { return i.subtotal === null; }) ? ' + itens cobrados pelo peso' : ''));
+  if (paraDono && p.obs) l.push('Observações: ' + p.obs);
   if (!paraDono && CONFIG.PIX) { l.push(''); l.push(CONFIG.PIX); }
   if (paraDono) { l.push(''); l.push('Painel: ' + CONFIG.URL_SITE + 'painel.html'); }
   return l.join('\n');
+}
+
+/* ======================================================================
+   Estrutura da planilha
+   ====================================================================== */
+
+/** Cria as abas que faltam (e os produtos iniciais). Roda sozinho no primeiro uso. */
+function garantirEstrutura_(forcar) {
+  var ss = planilha_();
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('PLANILHA_ID')) props.setProperty('PLANILHA_ID', ss.getId());
+  if (!props.getProperty('RODADA')) props.setProperty('RODADA', '1');
+  if (!props.getProperty('ABERTO')) props.setProperty('ABERTO', 'sim');
+  var prod = ss.getSheetByName(ABA.PRODUTOS);
+  if (!forcar && prod && prod.getLastRow() >= 2 && ss.getSheetByName(ABA.PEDIDOS) && ss.getSheetByName(ABA.ITENS)) return;
+
+  var lock = travar_(30000);
+  try {
+    try { ss.setSpreadsheetTimeZone(FUSO); } catch (e) { /* sem permissão para mudar o fuso */ }
+    var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+    var ti = aba_(ABA.ITENS, CAMPOS.ITENS);
+    var tr = aba_(ABA.PRODUTOS, CAMPOS.PRODUTOS);
+    if (!ss.getSheetByName(ABA.RESUMO)) ss.insertSheet(ABA.RESUMO);
+    if (tr.sh.getLastRow() < 2) {
+      var linhas = CATALOGO_INICIAL.map(function (c) {
+        return linhaPorCampos_(tr, { id: c[0], categoria: c[1], produto: c[2], curto: c[3], detalhe: c[4], preco: c[5], unidade: c[6], disponivel: c[7] });
+      });
+      garantirLinhas_(tr.sh, linhas.length + 1);
+      tr.sh.getRange(2, tr.col.disponivel + 1, linhas.length, 1).insertCheckboxes();
+      tr.sh.getRange(2, 1, linhas.length, linhas[0].length).setValues(linhas);
+    }
+    formatar_(tp, { data: 'dd/mm/yyyy hh:mm', total: '"R$" #,##0.00' }, { numero: 70, data: 130, rodada: 70, nome: 180, email: 220, whatsapp: 130, itens: 300, total: 100, obs: 220, pago: 70, entregue: 80, cancelado: 90, confirmacao: 170, envio: 120 }, ['itens', 'obs']);
+    formatar_(ti, { data: 'dd/mm/yyyy hh:mm', preco: '"R$" #,##0.00', subtotal: '"R$" #,##0.00' }, { numero: 90, data: 130, rodada: 70, cliente: 180, id: 170, produto: 320, qtd: 60, preco: 100, subtotal: 110, unidade: 80 }, []);
+    formatar_(tr, { preco: '"R$" #,##0.00' }, { id: 170, categoria: 170, produto: 330, curto: 220, detalhe: 320, preco: 100, unidade: 80, disponivel: 95 }, []);
+    try { tp.sh.hideColumns(tp.col.envio + 1); } catch (e) { /* já escondida */ }
+    ss.getSheets().forEach(function (sh) {
+      if (/^(P[aá]gina|Sheet|Planilha)\s?1$/i.test(sh.getName()) && sh.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(sh);
+    });
+    if (!props.getProperty('SEQ')) props.setProperty('SEQ', String(maiorNumero_()));
+  } finally {
+    soltar_(lock);
+  }
+}
+
+function formatar_(t, formatos, larguras, quebra) {
+  var max = t.sh.getMaxRows();
+  Object.keys(formatos).forEach(function (campo) {
+    if (t.col[campo] !== undefined) t.sh.getRange(1, t.col[campo] + 1, max, 1).setNumberFormat(formatos[campo]);
+  });
+  Object.keys(larguras).forEach(function (campo) {
+    if (t.col[campo] !== undefined) t.sh.setColumnWidth(t.col[campo] + 1, larguras[campo]);
+  });
+  quebra.forEach(function (campo) {
+    if (t.col[campo] !== undefined) t.sh.getRange(1, t.col[campo] + 1, max, 1).setWrap(true);
+  });
+  t.sh.setFrozenRows(1);
+}
+
+var ABAS_ = {};
+
+/** Abre uma aba (criando se faltar) e descobre a posição de cada coluna pelo cabeçalho. */
+function aba_(nome, campos) {
+  if (ABAS_[nome]) return ABAS_[nome];
+  var ss = planilha_();
+  var sh = ss.getSheetByName(nome) || ss.insertSheet(nome);
+  var ultima = sh.getLastColumn();
+  var cab = ultima ? sh.getRange(1, 1, 1, ultima).getValues()[0].map(chave_) : [];
+  var col = {};
+  var faltando = [];
+  campos.forEach(function (c) {
+    var i = cab.indexOf(chave_(c[1]));
+    if (i >= 0) col[c[0]] = i; else faltando.push(c);
+  });
+  if (faltando.length) {
+    var prox = 0;
+    for (var i = cab.length - 1; i >= 0; i--) { if (cab[i]) { prox = i + 1; break; } }
+    faltando.forEach(function (c) {
+      sh.getRange(1, prox + 1).setValue(c[1]);
+      col[c[0]] = prox;
+      prox++;
+    });
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, prox).setFontWeight('bold').setBackground('#641312').setFontColor('#ffffff');
+  }
+  var largura = 0;
+  Object.keys(col).forEach(function (k) { largura = Math.max(largura, col[k] + 1); });
+  ABAS_[nome] = { sh: sh, col: col, largura: Math.max(largura, sh.getLastColumn()) };
+  return ABAS_[nome];
+}
+
+function linhasDados_(t) {
+  var n = t.sh.getLastRow() - 1;
+  if (n < 1) return [];
+  return t.sh.getRange(2, 1, n, t.largura).getValues();
+}
+
+function linhaPorCampos_(t, valores) {
+  var linha = [];
+  for (var i = 0; i < t.largura; i++) linha.push('');
+  Object.keys(valores).forEach(function (campo) {
+    if (t.col[campo] !== undefined) linha[t.col[campo]] = valores[campo];
+  });
+  return linha;
+}
+
+function linhaDoPedido_(t, numero) {
+  var n = t.sh.getLastRow() - 1;
+  if (n < 1) return 0;
+  var nums = t.sh.getRange(2, t.col.numero + 1, n, 1).getValues();
+  for (var i = nums.length - 1; i >= 0; i--) {
+    if (formatarNumero_(nums[i][0]) === numero) return i + 2;
+  }
+  return 0;
+}
+
+/** A aba precisa ter linhas suficientes antes de gravar com getRange/setValues. */
+function garantirLinhas_(sh, ultimaLinha) {
+  var max = sh.getMaxRows();
+  if (ultimaLinha > max) sh.insertRowsAfter(max, ultimaLinha - max + 100);
 }
 
 /* ======================================================================
@@ -812,7 +1035,17 @@ function planilha_() {
   if (ss) return ss;
   var id = PropertiesService.getScriptProperties().getProperty('PLANILHA_ID');
   if (id) return SpreadsheetApp.openById(id);
-  throw new Error('Planilha não encontrada. Rode a função configurar.');
+  throw new Error('Planilha não encontrada.');
+}
+
+function travar_(ms) {
+  var l = LockService.getScriptLock();
+  l.waitLock(ms);
+  return l;
+}
+
+function soltar_(l) {
+  try { if (l) l.releaseLock(); } catch (e) { /* já liberado */ }
 }
 
 function rodadaAtual_() {
@@ -823,22 +1056,43 @@ function lojaAberta_() {
   return (PropertiesService.getScriptProperties().getProperty('ABERTO') || 'sim') !== 'nao';
 }
 
+function avisoAtual_() {
+  return PropertiesService.getScriptProperties().getProperty('AVISO') || '';
+}
+
+function verificarLimite_(email) {
+  var cache = CacheService.getScriptCache();
+  var porEmail = parseInt(cache.get('pedidos:' + email) || '0', 10) || 0;
+  if (porEmail >= CONFIG.MAX_PEDIDOS_POR_EMAIL_HORA) {
+    return 'Você já fez vários pedidos seguidos com este e-mail. Espere um pouco ou fale com ' + (CONFIG.RESPONSAVEL || 'a gente') + ' no WhatsApp.';
+  }
+  var geral = parseInt(cache.get('pedidos:geral') || '0', 10) || 0;
+  if (geral >= CONFIG.MAX_PEDIDOS_10_MIN) return 'Muitos pedidos ao mesmo tempo. Tente de novo em alguns minutos.';
+  return null;
+}
+
+function contarPedido_(email) {
+  var cache = CacheService.getScriptCache();
+  var porEmail = parseInt(cache.get('pedidos:' + email) || '0', 10) || 0;
+  var geral = parseInt(cache.get('pedidos:geral') || '0', 10) || 0;
+  cache.put('pedidos:' + email, String(porEmail + 1), 3600);
+  cache.put('pedidos:geral', String(geral + 1), 600);
+}
+
 function proximoNumero_() {
   var props = PropertiesService.getScriptProperties();
-  var seq = parseInt(props.getProperty('SEQ') || '', 10);
-  if (!seq && seq !== 0) seq = maiorNumero_();
+  var seq = parseInt(props.getProperty('SEQ') || '0', 10) || 0;
   seq = Math.max(seq, maiorNumero_()) + 1;
   props.setProperty('SEQ', String(seq));
   return seq;
 }
 
 function maiorNumero_() {
-  var sh = planilha_().getSheetByName(ABA.PEDIDOS);
-  if (!sh) return 0;
-  var n = sh.getLastRow() - 1;
+  var t = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+  var n = t.sh.getLastRow() - 1;
   if (n < 1) return 0;
   var maior = 0;
-  sh.getRange(2, 1, n, 1).getValues().forEach(function (r) {
+  t.sh.getRange(2, t.col.numero + 1, n, 1).getValues().forEach(function (r) {
     var v = parseInt(String(r[0]).replace(/\D/g, ''), 10);
     if (v > maior) maior = v;
   });
@@ -853,41 +1107,6 @@ function formatarNumero_(v) {
   return s;
 }
 
-function garantirAba_(ss, nome, cabecalho) {
-  var sh = ss.getSheetByName(nome) || ss.insertSheet(nome);
-  if (cabecalho && sh.getLastRow() === 0) {
-    sh.getRange(1, 1, 1, cabecalho.length).setValues([cabecalho]);
-  }
-  if (cabecalho) {
-    sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, cabecalho.length).setFontWeight('bold').setBackground('#641312').setFontColor('#ffffff');
-  }
-  return sh;
-}
-
-function formatarPedidos_(sh) {
-  sh.getRange('B:B').setNumberFormat('dd/mm/yyyy hh:mm');
-  sh.getRange('H:H').setNumberFormat('"R$" #,##0.00');
-  sh.getRange('G:G').setWrap(true);
-  sh.getRange('I:I').setWrap(true);
-  var larguras = [70, 130, 70, 180, 220, 130, 300, 100, 220, 70, 80, 90, 120];
-  larguras.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
-  sh.hideColumns(COL.ENVIO + 1);
-}
-
-function formatarItens_(sh) {
-  sh.getRange('B:B').setNumberFormat('dd/mm/yyyy hh:mm');
-  sh.getRange('H:I').setNumberFormat('"R$" #,##0.00');
-  var larguras = [90, 130, 70, 180, 170, 320, 60, 100, 110, 80];
-  larguras.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
-}
-
-function formatarProdutos_(sh) {
-  sh.getRange('F:F').setNumberFormat('"R$" #,##0.00');
-  var larguras = [170, 170, 330, 220, 320, 100, 80, 95];
-  larguras.forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
-}
-
 function limparTexto_(v, max, multilinha) {
   var s = String(v === null || v === undefined ? '' : v);
   s = multilinha ? s.replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n') : s.replace(/\s+/g, ' ');
@@ -895,10 +1114,23 @@ function limparTexto_(v, max, multilinha) {
   return s.trim().slice(0, max);
 }
 
-/** Evita que um texto seja interpretado como fórmula na planilha. */
-function seguro_(s) {
-  s = String(s === null || s === undefined ? '' : s);
-  return /^[=+\-@]/.test(s) ? "'" + s : s;
+/** Texto livre vai sempre com apóstrofo: a planilha não transforma em data, número ou fórmula. */
+function texto_(s) {
+  s = s === null || s === undefined ? '' : String(s);
+  return s ? "'" + s : '';
+}
+
+function emailValido_(e) {
+  return e.length <= 120 && !/\.\./.test(e) &&
+    /^[a-z0-9._%+'\-]+@[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(e);
+}
+
+/** Deixa o telefone com DDD + número (10 ou 11 dígitos), ou vazio. */
+function telefoneNacional_(s) {
+  var d = String(s === null || s === undefined ? '' : s).replace(/\D/g, '').replace(/^0+/, '');
+  if ((d.length === 12 || d.length === 13) && d.indexOf('55') === 0) d = d.slice(2);
+  else if (d.length > 11) d = d.slice(-11);
+  return d.length === 10 || d.length === 11 ? d : '';
 }
 
 function numero_(v) {
@@ -932,20 +1164,18 @@ function esc_(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function chave_(s) {
+  return String(s === null || s === undefined ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function chavePessoa_(nome) {
   return String(nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function primeiroNome_(nome) { return String(nome || '').trim().split(/\s+/)[0] || ''; }
 
-function numeroWhats_(d) {
-  d = String(d || '').replace(/\D/g, '');
-  return d.length <= 11 ? '55' + d : d;
-}
-
 function telefone_(d) {
-  d = String(d || '').replace(/\D/g, '');
-  if (d.length > 11 && d.indexOf('55') === 0) d = d.slice(2);
+  d = telefoneNacional_(d);
   if (d.length === 11) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
   if (d.length === 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
   return d;

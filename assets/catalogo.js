@@ -31,10 +31,10 @@ window.CATALOGO_DUJOAO = {
     { id: 'linguica-apimentada', cat: 'linguicas', nome: 'Linguiça Apimentada 500 g', curto: 'Apimentada', preco: 18.00 },
     { id: 'linguica-queijo-coalho', cat: 'linguicas', nome: 'Linguiça Queijo coalho e pimenta biquinho 500 g', curto: 'Queijo coalho e pimenta biquinho', preco: 20.00 },
 
-    { id: 'vulcao-3-queijos', cat: 'vulcao', nome: 'Linguiça Vulcão 3 Queijos', curto: '3 Queijos', detalhe: 'Mussarela, catupiry original e parmesão', preco: 49.90 },
-    { id: 'vulcao-cheddar', cat: 'vulcao', nome: 'Linguiça Vulcão Cheddar', curto: 'Cheddar', detalhe: 'Cheddar, azeitona, pimenta biquinho e queijo coalho', preco: 49.90 },
-    { id: 'vulcao-nozes', cat: 'vulcao', nome: 'Linguiça Vulcão Nozes', curto: 'Nozes', detalhe: 'Cream cheese, nozes e provolone', preco: 49.90 },
-    { id: 'vulcao-romeu-julieta', cat: 'vulcao', nome: 'Linguiça Vulcão Romeu e Julieta', curto: 'Romeu e Julieta', detalhe: 'Mussarela, parmesão e goiabada', preco: 49.90 },
+    { id: 'vulcao-3-queijos', cat: 'vulcao', nome: 'Linguiça Vulcão 3 Queijos', curto: '3 Queijos', selo: '4 un', detalhe: 'Mussarela, catupiry original e parmesão', preco: 49.90 },
+    { id: 'vulcao-cheddar', cat: 'vulcao', nome: 'Linguiça Vulcão Cheddar', curto: 'Cheddar', selo: '4 un', detalhe: 'Cheddar, azeitona, pimenta biquinho e queijo coalho', preco: 49.90 },
+    { id: 'vulcao-nozes', cat: 'vulcao', nome: 'Linguiça Vulcão Nozes', curto: 'Nozes', selo: '4 un', detalhe: 'Cream cheese, nozes e provolone', preco: 49.90 },
+    { id: 'vulcao-romeu-julieta', cat: 'vulcao', nome: 'Linguiça Vulcão Romeu e Julieta', curto: 'Romeu e Julieta', selo: '4 un', detalhe: 'Mussarela, parmesão e goiabada', preco: 49.90 },
 
     { id: 'porchetta-400', cat: 'congelados', nome: 'Porchetta 400 g', curto: 'Porchetta', detalhe: 'Peça com 400 g (R$ 75,00 o kg)', preco: 30.00, foto: 'assets/img/porchetta.webp' },
     { id: 'hamburguer-provolone', cat: 'congelados', nome: 'Hambúrguer suíno recheado com provolone 600 g', curto: 'Hambúrguer suíno recheado com provolone', detalhe: '600 g, 3 unidades', preco: 22.00 },
