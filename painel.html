@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Painel de pedidos DuJOÃO</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#4a0d0c">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preload" href="assets/fonts/bodoni-moda.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/estilo.css">
+  <script src="config.js" defer></script>
+  <script src="assets/painel.js" defer></script>
+</head>
+<body class="painel">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-atualizar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.7-4.3L4 8"/><path d="M4 3.5V8h4.5"/><path d="M4 13a8 8 0 0 0 14.7 4.3L20 16"/><path d="M20 20.5V16h-4.5"/></g></symbol>
+    <symbol id="i-sair" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-copiar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.2A1.7 1.7 0 0 0 13.8 4.5H6.2A1.7 1.7 0 0 0 4.5 6.2v7.6a1.7 1.7 0 0 0 1.7 1.7h2.3"/></g></symbol>
+    <symbol id="i-conversa" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0-7.4 12.7L3.5 20.5l4.4-1.1A8.5 8.5 0 1 0 12 3.5Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+    <symbol id="i-busca" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g></symbol>
+  </svg>
+
+  <!-- Entrada -->
+  <main class="entrada" id="entrada" hidden>
+    <form class="entrada__cartao papel serrilha" id="form-entrada" novalidate>
+      <img src="assets/img/emblema-papel.png" alt="" width="56" height="88" class="entrada__emblema">
+      <h1 class="entrada__titulo">Painel de pedidos</h1>
+      <p class="entrada__texto" id="entrada-texto">Digite a senha do painel para ver os pedidos.</p>
+      <div class="campo">
+        <label for="senha">Senha</label>
+        <input id="senha" type="password" autocomplete="current-password" required>
+      </div>
+      <label class="lembrar"><input type="checkbox" id="lembrar" checked> Lembrar neste aparelho</label>
+      <div class="alerta" id="entrada-erro" role="alert" hidden></div>
+      <button class="btn btn--primario btn--largo" id="entrar" type="submit" style="margin-top:16px">Entrar</button>
+      <p class="entrada__link"><a href="./">Ir para a página de pedidos</a></p>
+    </form>
+  </main>
+
+  <!-- Painel -->
+  <div id="app" hidden>
+    <header class="painel-topo">
+      <div class="painel-topo__linha">
+        <img src="assets/img/emblema.png" alt="" width="26" height="41" class="painel-topo__emblema">
+        <h1 class="painel-topo__titulo">Pedidos DuJOÃO</h1>
+        <button class="icone-btn" id="atualizar" type="button" aria-label="Atualizar pedidos"><svg aria-hidden="true"><use href="#i-atualizar"/></svg></button>
+        <button class="icone-btn" id="sair" type="button" aria-label="Sair do painel"><svg aria-hidden="true"><use href="#i-sair"/></svg></button>
+      </div>
+      <div class="painel-topo__linha">
+        <div class="abas" role="tablist" aria-label="Seções do painel">
+          <button class="aba" role="tab" id="aba-tickets" aria-controls="painel-tickets" aria-selected="true" type="button">Tickets <span class="aba__n" id="n-tickets">0</span></button>
+          <button class="aba" role="tab" id="aba-resumo" aria-controls="painel-resumo" aria-selected="false" type="button" tabindex="-1">Resumo</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="painel-corpo">
+      <div class="painel-info">
+        <label class="rodada-sel">
+          <span>Rodada</span>
+          <select id="rodada"></select>
+        </label>
+        <span class="status-loja" id="status-loja"></span>
+        <span class="atualizado" id="atualizado" aria-live="polite"></span>
+      </div>
+      <section id="painel-tickets" role="tabpanel" aria-labelledby="aba-tickets">
+        <div class="filtros">
+          <div class="filtros__chips" id="filtros" role="group" aria-label="Filtrar tickets"></div>
+          <label class="busca">
+            <svg aria-hidden="true"><use href="#i-busca"/></svg>
+            <span class="sr-only">Buscar</span>
+            <input id="busca" type="search" placeholder="Buscar por nome, nº ou produto" autocomplete="off">
+          </label>
+        </div>
+        <div class="tickets" id="tickets"></div>
+        <div class="vazio-painel" id="tickets-vazio" hidden></div>
+      </section>
+
+      <section id="painel-resumo" role="tabpanel" aria-labelledby="aba-resumo" hidden>
+        <div class="numeros" id="numeros"></div>
+        <div class="resumo-grade">
+          <article class="cartao papel serrilha">
+            <div class="cartao__cabeca">
+              <h2 class="cartao__titulo">Pedido para o DuJOÃO</h2>
+              <p class="cartao__sub">Tudo que foi pedido nesta rodada, sem os cancelados.</p>
+            </div>
+            <div id="lista-produtos"></div>
+            <button class="btn btn--primario btn--largo" type="button" id="copiar-produtos"><svg aria-hidden="true"><use href="#i-copiar"/></svg>Copiar para o WhatsApp</button>
+          </article>
+
+          <div class="resumo-coluna">
+            <article class="cartao papel serrilha">
+              <div class="cartao__cabeca">
+                <h2 class="cartao__titulo">Valores por pessoa</h2>
+              </div>
+              <ul class="lista-pessoas" id="lista-pessoas"></ul>
+              <button class="btn btn--contorno btn--largo" type="button" id="copiar-valores"><svg aria-hidden="true"><use href="#i-copiar"/></svg>Copiar valores</button>
+            </article>
+
+            <article class="cartao papel serrilha">
+              <div class="cartao__cabeca">
+                <h2 class="cartao__titulo">Site e rodada</h2>
+              </div>
+              <div class="ajuste">
+                <div>
+                  <p class="ajuste__nome" id="rotulo-aberto">Recebendo pedidos</p>
+                  <p class="ajuste__desc">Desligue para fechar o site para novos pedidos.</p>
+                </div>
+                <button class="interruptor" id="aberto" type="button" role="switch" aria-checked="true" aria-labelledby="rotulo-aberto"><span></span></button>
+              </div>
+              <form class="ajuste ajuste--coluna" id="form-aviso">
+                <label class="ajuste__nome" for="aviso">Aviso no topo do site</label>
+                <p class="ajuste__desc" id="aviso-desc">Por exemplo: "Pedidos até quinta, entrega no sábado". Deixe vazio para não mostrar nada.</p>
+                <div class="ajuste__linha">
+                  <input id="aviso" type="text" maxlength="200" aria-describedby="aviso-desc">
+                  <button class="btn btn--contorno" type="submit">Salvar</button>
+                </div>
+              </form>
+              <div class="ajuste ajuste--coluna">
+                <p class="ajuste__nome">Nova rodada</p>
+                <p class="ajuste__desc" id="rodada-desc">Quando fechar este pedido com o DuJOÃO, comece uma nova rodada. Os pedidos antigos continuam salvos.</p>
+                <button class="btn btn--contorno" type="button" id="nova-rodada">Começar nova rodada</button>
+              </div>
+              <p class="cartao__rodape"><a id="link-planilha" href="#" target="_blank" rel="noopener">Abrir a planilha</a></p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="dialogo papel" id="dialogo" aria-labelledby="dialogo-titulo">
+    <form method="dialog">
+      <h2 class="dialogo__titulo" id="dialogo-titulo"></h2>
+      <p class="dialogo__texto" id="dialogo-texto"></p>
+      <div class="dialogo__acoes">
+        <button class="btn btn--contorno" value="nao" type="submit">Voltar</button>
+        <button class="btn btn--primario" value="sim" type="submit" id="dialogo-sim"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

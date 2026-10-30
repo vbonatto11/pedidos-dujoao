@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pedidos DuJOÃO</title>
+  <meta name="description" content="Monte seu pedido de torresmo, pururuca, linguiças e congelados DuJOÃO. Confirme e receba o resumo por e-mail.">
+  <meta name="theme-color" content="#641312">
+  <meta name="color-scheme" content="light">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pedidos DuJOÃO, A Casa do Torresmo">
+  <meta property="og:description" content="Escolha os produtos, confirme e receba o resumo do pedido por e-mail.">
+  <meta property="og:url" content="https://vbonatto11.github.io/pedidos-dujoao/">
+  <meta property="og:image" content="https://vbonatto11.github.io/pedidos-dujoao/assets/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preload" href="assets/fonts/bodoni-moda.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/archivo.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/estilo.css">
+  <script src="config.js" defer></script>
+  <script src="assets/catalogo.js" defer></script>
+  <script src="assets/loja.js" defer></script>
+</head>
+<body class="loja">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-menos" viewBox="0 0 24 24"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-neve" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v19M3.8 7.25l16.4 9.5M20.2 7.25 3.8 16.75"/><path d="M9.6 4.4 12 6.3l2.4-1.9M9.6 19.6 12 17.7l2.4 1.9"/></g></symbol>
+    <symbol id="i-termometro" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z"/><path d="M12 9v6.5"/></g></symbol>
+    <symbol id="i-copiar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.2A1.7 1.7 0 0 0 13.8 4.5H6.2A1.7 1.7 0 0 0 4.5 6.2v7.6a1.7 1.7 0 0 0 1.7 1.7h2.3"/></g></symbol>
+    <symbol id="i-conversa" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0-7.4 12.7L3.5 20.5l4.4-1.1A8.5 8.5 0 1 0 12 3.5Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <a class="pular" href="#cardapio">Pular para os produtos</a>
+
+  <header class="topo">
+    <img class="topo__logo" src="assets/img/logo.png" alt="DuJOÃO, A Casa do Torresmo" width="616" height="640">
+    <h1 class="fita">
+      <span class="sr-only">Faça seu pedido</span>
+      <svg viewBox="0 0 600 160" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="fita-ouro" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffc552"/>
+            <stop offset=".55" stop-color="#f8a828"/>
+            <stop offset="1" stop-color="#df8d13"/>
+          </linearGradient>
+          <path id="fita-curva" d="M60,75 Q300,141 540,75"/>
+        </defs>
+        <path d="M84,52 L8,52 L34,82 L8,112 L84,112 Z" fill="#b66f0b"/>
+        <path d="M516,52 L592,52 L566,82 L592,112 L516,112 Z" fill="#b66f0b"/>
+        <path d="M60,90 L84,112 L84,96 Z" fill="#7a4704"/>
+        <path d="M540,90 L516,112 L516,96 Z" fill="#7a4704"/>
+        <path d="M60,34 Q300,100 540,34 L540,90 Q300,156 60,90 Z" fill="url(#fita-ouro)"/>
+        <path d="M66,41 Q300,107 534,41" fill="none" stroke="#fff3cc" stroke-opacity=".6" stroke-width="1.4"/>
+        <path d="M66,83 Q300,149 534,83" fill="none" stroke="#8f5305" stroke-opacity=".45" stroke-width="1.4"/>
+        <text font-size="38" fill="#4a0d0c"><textPath href="#fita-curva" startOffset="50%" text-anchor="middle">Faça seu pedido</textPath></text>
+      </svg>
+    </h1>
+    <ol class="passos">
+      <li>Escolha os produtos</li>
+      <li>Confirme com seu nome e e-mail</li>
+      <li>Receba e pague por PIX depois</li>
+    </ol>
+    <p class="topo__aviso" id="aviso" role="status" hidden></p>
+  </header>
+
+  <nav class="categorias" aria-label="Categorias de produtos">
+    <div class="categorias__trilho" id="chips"></div>
+  </nav>
+
+  <div class="pagina">
+    <main class="cardapio" id="cardapio" tabindex="-1">
+      <noscript><p class="secao">Para fazer o pedido, ative o JavaScript do navegador.</p></noscript>
+    </main>
+
+    <aside class="comanda" id="comanda" aria-labelledby="comanda-titulo">
+      <div class="comanda__papel papel serrilha">
+        <div class="comanda__cabeca">
+          <img class="comanda__emblema" src="assets/img/emblema-papel.png" alt="" width="30" height="47">
+          <h2 class="comanda__titulo" id="comanda-titulo" tabindex="-1">Seu pedido</h2>
+          <button class="comanda__fechar" id="fechar" type="button" aria-label="Fechar e continuar escolhendo">
+            <svg aria-hidden="true"><use href="#i-fechar"/></svg>
+          </button>
+        </div>
+
+        <div class="comanda__rolagem" id="comanda-rolagem">
+          <section id="etapa-pedido" aria-label="Revisão do pedido">
+            <div class="comanda__vazio" id="vazio">
+              <strong>Nenhum produto ainda.</strong>
+              Toque em + ao lado dos produtos para montar o pedido.
+            </div>
+
+            <ul class="linhas" id="linhas"></ul>
+
+            <div class="total" id="total" hidden>
+              <span>Total</span>
+              <div>
+                <strong id="total-valor">R$ 0,00</strong>
+                <p class="total__extra" id="total-extra" hidden>+ joelho de porco, pelo peso</p>
+              </div>
+            </div>
+
+            <form class="form" id="form" novalidate hidden>
+              <h3 class="form__titulo">Seus dados</h3>
+
+              <div class="campo" id="campo-nome">
+                <label for="nome">Seu nome</label>
+                <input id="nome" name="nome" type="text" autocomplete="name" maxlength="80" required aria-describedby="erro-nome">
+                <p class="campo__erro" id="erro-nome"></p>
+              </div>
+
+              <div class="campo" id="campo-email">
+                <label for="email">Seu e-mail</label>
+                <input id="email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="120" required aria-describedby="ajuda-email erro-email">
+                <p class="campo__ajuda" id="ajuda-email">A confirmação do pedido chega neste e-mail.</p>
+                <p class="campo__erro" id="erro-email"></p>
+              </div>
+
+              <div class="campo">
+                <label for="whatsapp">WhatsApp <span class="opcional">(opcional)</span></label>
+                <input id="whatsapp" name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(19) 99999-9999">
+              </div>
+
+              <div class="campo">
+                <label for="obs">Observações <span class="opcional">(opcional)</span></label>
+                <textarea id="obs" name="obs" rows="2" maxlength="500"></textarea>
+              </div>
+
+              <div class="isca" aria-hidden="true">
+                <label for="site">Deixe em branco</label>
+                <input id="site" name="site" type="text" tabindex="-1" autocomplete="off">
+              </div>
+
+              <div class="alerta" id="alerta" role="alert" hidden></div>
+
+              <button class="btn btn--primario btn--largo" id="confirmar" type="submit" style="margin-top:18px">Confirmar pedido</button>
+              <p class="comanda__pagamento" id="nota-pagamento">Pagamento por PIX depois que você receber os produtos.</p>
+            </form>
+          </section>
+
+          <section class="sucesso" id="etapa-sucesso" aria-label="Pedido confirmado" hidden></section>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="rodape">
+    <img src="assets/img/emblema.png" alt="" width="42" height="66" loading="lazy">
+    <p id="rodape-responsavel">Pedidos organizados por Vinicius.</p>
+    <p><a id="rodape-whatsapp" href="https://wa.me/5535998983305">Falar no WhatsApp</a></p>
+    <p><a href="https://www.instagram.com/torresminhosdujoao/" rel="noopener">@torresminhosdujoao no Instagram</a></p>
+  </footer>
+
+  <div class="barra" id="barra">
+    <button class="barra__botao" id="abrir" type="button" aria-controls="comanda" aria-expanded="false" tabindex="-1">
+      <span>
+        <span class="barra__qtd" id="barra-qtd">0 itens</span>
+        <span class="barra__total" id="barra-total">R$ 0,00</span>
+      </span>
+      <span class="barra__acao">Revisar pedido</span>
+    </button>
+  </div>
+  <div class="fundo" id="fundo" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
