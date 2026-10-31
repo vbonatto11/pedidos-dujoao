@@ -48,19 +48,27 @@
   }
   function primeiroNome(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }
   function capitaliza(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
-  function listaItens(itens) {
-    var partes = itens.map(function (i) { return i.qtd + ' ' + i.nome + (i.subtotal === null ? ' (pelo peso)' : ''); });
-    if (partes.length <= 1) return partes.join('');
-    return partes.slice(0, -1).join(', ') + ' e ' + partes[partes.length - 1];
+  /** "Torresmo 180 g" vira "Torresmo - 180g/cada"; sem peso no nome fica só o nome. */
+  function linhaItem(i) {
+    if (i.subtotal === null) return '• *' + i.qtd + '* ' + i.nome + ' - pelo peso';
+    var m = String(i.nome).match(/^(.*\S)\s+(\d+(?:[.,]\d+)?)\s*(g|kg)$/i);
+    return '• *' + i.qtd + '* ' + (m ? m[1] + ' - ' + m[2] + m[3].toLowerCase() + '/cada' : i.nome);
   }
-  /** Mensagem de cobrança: Oiii *Nome*, o seu pedido foi *itens* e ficou *total*. PIX... */
+  /** Mensagem de cobrança, um item por linha. */
   function textoCobranca(p) {
     var temPeso = p.itens.some(function (i) { return i.subtotal === null; });
     var pix = CFG.pix || {};
-    var t = 'Oiii *' + capitaliza(primeiroNome(p.nome)) + '*, o seu pedido foi *' + listaItens(p.itens) + '* e ficou *' +
-      dinheiro(p.total) + '*' + (temPeso ? ' mais os itens pelo peso' : '') + '.';
-    if (pix.chave) t += ' Pode mandar o PIX para o meu pai, ' + (pix.nome || '') + ', na chave *' + pix.chave + '*.';
-    return t;
+    var l = ['Oiii *' + capitaliza(primeiroNome(p.nome)) + '*! Seu pedido ficou assim:', ''];
+    p.itens.forEach(function (i) { l.push(linhaItem(i)); });
+    l.push('');
+    l.push('*Total: ' + dinheiro(p.total) + (temPeso ? ' + itens pelo peso' : '') + '.*');
+    if (pix.chave) {
+      l.push('');
+      l.push('Pode mandar o PIX para meu pai, ' + (pix.nome || '') + ', na chave: *' + pix.chave + '*');
+    }
+    l.push('');
+    l.push('Muito obrigado!!');
+    return l.join('\n');
   }
   function nbsp(s) { return String(s).replace(/ (\d)/g, ' $1'); }
 
