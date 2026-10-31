@@ -5,7 +5,7 @@
  *              Enquanto estiver vazia, o site envia o pedido pelo WhatsApp.
  */
 window.CONFIG_DUJOAO = {
-  urlPlanilha: '',
+  urlPlanilha: 'https://script.google.com/macros/s/AKfycbxw8eWOx5quYTkJSlMcGReWT_nGoa__97Lw48-krXo3f-9bTRco_a3On5eSELCH2zKx/exec',
 
   // Número com DDI + DDD, só dígitos. Usado no botão "Avisar no WhatsApp".
   whatsapp: '5535998983305',
