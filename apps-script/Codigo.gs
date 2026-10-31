@@ -147,7 +147,7 @@ function onEdit(e) {
   try {
     if (!e || !e.range) return;
     var nome = e.range.getSheet().getName();
-    if (nome === ABA.ITENS) { atualizarResumo(); return; }
+    if (nome === ABA.ITENS) { conciliarPesos_(); atualizarResumo(); return; }
     if (nome !== ABA.PEDIDOS) return;
     var col = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS).col;
     var c1 = e.range.getColumn() - 1;
@@ -426,30 +426,30 @@ function lerItens_() {
   return mapa;
 }
 
-/** Uma linha da aba Itens. Item por quilo só tem valor depois de pesado (coluna Peso). */
+/**
+ * Uma linha da aba Itens.
+ * A coluna Subtotal guarda o valor que já está somado no Total do pedido (aba Pedidos).
+ * Item por quilo: com peso, o valor é preço do kg x peso; sem peso e sem subtotal, fica "a pesar".
+ * Se alguém digitar o peso direto na planilha, a diferença para o Subtotal entra no total (veja lerPedidos_).
+ */
 function itemDaLinha_(r, c) {
   var qtd = Math.floor(numero_(r[c.qtd]));
   if (!isFinite(qtd) || qtd < 1) return null;
   var unidade = /kg/i.test(String(r[c.unidade] || '')) ? 'kg' : 'un';
   var preco = centavos_(numero_(r[c.preco])) || 0;
-  var peso = null;
-  var sub;
-  if (unidade === 'kg') {
-    peso = pesoValido_(r[c.peso]);
-    sub = peso === null ? null : valorPeso_(preco, peso);
-  } else {
-    var bruto = r[c.subtotal];
-    sub = bruto === '' || bruto === null ? null : centavos_(numero_(bruto));
-    if (sub !== null && !isFinite(sub)) sub = null;
-  }
+  var bruto = r[c.subtotal];
+  var celula = bruto === '' || bruto === null ? null : centavos_(numero_(bruto));
+  if (celula !== null && !isFinite(celula)) celula = null;
+  var peso = unidade === 'kg' ? pesoValido_(r[c.peso]) : null;
   return {
     id: String(r[c.id] || '').trim(),
     nome: String(r[c.produto] || '').trim(),
     qtd: qtd,
     preco: preco,
-    subtotal: sub,
+    subtotal: peso !== null ? valorPeso_(preco, peso) : celula,
     unidade: unidade,
-    peso: peso
+    peso: peso,
+    incluido: celula || 0
   };
 }
 
@@ -468,6 +468,7 @@ function lerPedidos_(rodada) {
     var itens = itensPorNumero[numero] || [];
     var totalPlanilha = numero_(r[c.total]);
     var totalItens = itens.reduce(function (s, it) { return s + (it.subtotal || 0); }, 0);
+    var acerto = itens.reduce(function (s, it) { return s + (it.subtotal || 0) - it.incluido; }, 0);
     var data = r[c.data] instanceof Date ? r[c.data] : new Date(r[c.data]);
     var dataOk = data instanceof Date && !isNaN(data.getTime());
     lista.push({
@@ -481,7 +482,7 @@ function lerPedidos_(rodada) {
       whatsapp: telefoneNacional_(r[c.whatsapp]),
       obs: String(r[c.obs] || '').trim(),
       itens: itens,
-      total: isFinite(totalPlanilha) ? centavos_(totalPlanilha) : totalItens,
+      total: isFinite(totalPlanilha) ? Math.max(0, centavos_(totalPlanilha) + acerto) : totalItens,
       pago: verdadeiro_(r[c.pago], false),
       entregue: verdadeiro_(r[c.entregue], false),
       cancelado: verdadeiro_(r[c.cancelado], false),
@@ -554,7 +555,10 @@ function pedidoPublico_(p) {
   return {
     numero: p.numero, data: p.data, dataTexto: p.dataTexto, rodada: p.rodada,
     nome: p.nome, email: p.email, whatsapp: p.whatsapp, obs: p.obs,
-    itens: p.itens, total: p.total,
+    itens: p.itens.map(function (i) {
+      return { id: i.id, nome: i.nome, qtd: i.qtd, preco: i.preco, subtotal: i.subtotal, unidade: i.unidade, peso: i.peso };
+    }),
+    total: p.total,
     pago: p.pago, entregue: p.entregue, cancelado: p.cancelado,
     confirmacao: p.confirmacao
   };
@@ -657,22 +661,25 @@ function salvarPeso_(d) {
       erro = { ok: false, codigo: 'nao-encontrado', erro: 'Item não encontrado no pedido nº ' + numero + '.' };
     } else if (!/kg/i.test(String(vals[alvo][c.unidade] || ''))) {
       erro = { ok: false, codigo: 'validacao', erro: 'Este item não é vendido por quilo.' };
+    } else if (!itemDaLinha_(vals[alvo], c)) {
+      erro = { ok: false, codigo: 'validacao', erro: 'Este item está sem quantidade na planilha (aba Itens).' };
     } else {
       var antes = itemDaLinha_(vals[alvo], c);
-      vals[alvo][c.peso] = peso === null ? '' : peso;
-      var depois = itemDaLinha_(vals[alvo], c);
+      var novoSub = peso === null ? null : valorPeso_(antes.preco, peso);
       var linha = alvo + 2;
       ti.sh.getRange(linha, c.peso + 1).setNumberFormat('0.000').setValue(peso === null ? '' : peso);
-      ti.sh.getRange(linha, c.subtotal + 1).setValue(depois.subtotal === null ? '' : depois.subtotal / 100);
+      ti.sh.getRange(linha, c.subtotal + 1).setValue(novoSub === null ? '' : novoSub / 100);
+      vals[alvo][c.peso] = peso === null ? '' : peso;
+      vals[alvo][c.subtotal] = novoSub === null ? '' : novoSub / 100;
 
-      // Troca só o valor deste item no total (um ajuste feito à mão no total continua valendo).
+      // Troca só o valor deste item no total: um ajuste feito à mão no total continua valendo.
       var itensPedido = vals.filter(function (r) { return formatarNumero_(r[c.numero]) === numero; })
         .map(function (r) { return itemDaLinha_(r, c); })
         .filter(function (x) { return x; });
       var celTotal = tp.sh.getRange(lp, tp.col.total + 1);
       var totalAtual = numero_(celTotal.getValue());
       var novo = isFinite(totalAtual)
-        ? centavos_(totalAtual) - (antes.subtotal || 0) + (depois.subtotal || 0)
+        ? centavos_(totalAtual) - antes.incluido + (novoSub || 0)
         : itensPedido.reduce(function (s, x) { return s + (x.subtotal || 0); }, 0);
       celTotal.setValue(Math.max(0, novo) / 100);
       tp.sh.getRange(lp, tp.col.itens + 1).setValue(texto_(textoItens_(itensPedido)));
@@ -685,6 +692,53 @@ function salvarPeso_(d) {
   try { atualizarResumo(); } catch (err) { console.error(err); }
   var lista = lerPedidos_(null).filter(function (p) { return p.numero === numero; });
   return { ok: true, pedido: lista.length ? pedidoPublico_(lista[0]) : null };
+}
+
+/**
+ * Quando alguém digita o peso direto na aba Itens, soma a diferença no Total do pedido
+ * e preenche o Subtotal, para a planilha ficar igual ao painel. Roda pelo onEdit.
+ */
+function conciliarPesos_() {
+  var lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) return 0;
+  } catch (e) {
+    return 0;
+  }
+  try {
+    var ti = aba_(ABA.ITENS, CAMPOS.ITENS);
+    var c = ti.col;
+    var vals = linhasDados_(ti);
+    var ajustes = {};
+    vals.forEach(function (r, k) {
+      var it = /kg/i.test(String(r[c.unidade] || '')) ? itemDaLinha_(r, c) : null;
+      if (!it || it.peso === null || it.subtotal === it.incluido) return;
+      var numero = formatarNumero_(r[c.numero]);
+      if (!numero) return;
+      ti.sh.getRange(k + 2, c.subtotal + 1).setValue(it.subtotal / 100);
+      r[c.subtotal] = it.subtotal / 100;
+      ajustes[numero] = (ajustes[numero] || 0) + it.subtotal - it.incluido;
+    });
+    var numeros = Object.keys(ajustes);
+    if (!numeros.length) return 0;
+    var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+    numeros.forEach(function (numero) {
+      var lp = linhaDoPedido_(tp, numero);
+      if (!lp) return;
+      var cel = tp.sh.getRange(lp, tp.col.total + 1);
+      var atual = numero_(cel.getValue());
+      if (isFinite(atual)) cel.setValue(Math.max(0, centavos_(atual) + ajustes[numero]) / 100);
+      var itens = vals.filter(function (r) { return formatarNumero_(r[c.numero]) === numero; })
+        .map(function (r) { return itemDaLinha_(r, c); })
+        .filter(function (x) { return x; });
+      tp.sh.getRange(lp, tp.col.itens + 1).setValue(texto_(textoItens_(itens)));
+    });
+    SpreadsheetApp.flush();
+    return numeros.length;
+  } finally {
+    soltar_(lock);
+  }
 }
 
 function configurarLoja_(d) {

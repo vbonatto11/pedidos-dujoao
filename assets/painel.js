@@ -21,7 +21,8 @@
     carregando: false,
     pendente: false,
     req: 0,
-    mutacao: 0
+    mutacao: 0,
+    emVoo: 0     // gravações a caminho da planilha
   };
 
   /* ---------- utilidades ---------- */
@@ -203,7 +204,7 @@
     ed.enviando = enviado;
     ed.erro = false;
     atualizarPeso(numero, id);
-    estado.mutacao++;
+    inicioMutacao();
     chamarPainel({ acao: 'peso', numero: numero, id: id, peso: enviado === null ? null : enviado / 1000 }).then(function (r) {
       if (!r || !r.ok) {
         if (r && r.codigo === 'acao') throw new Error('Para salvar o peso pelo painel, atualize o script da planilha (passo a passo no LEIAME).');
@@ -227,7 +228,7 @@
       atualizarPeso(numero, id);
       if (err && err.silencioso) return;
       avisar(err && !err.codigo && err.message ? err.message : 'Não foi possível salvar o peso. Confira a internet e tente de novo.', 6000);
-    });
+    }).finally(fimMutacao);
   }
   function onde(el) {
     var t = el.closest('.ticket');
@@ -385,7 +386,7 @@
       if (meu !== estado.req) return false;
       if (!r || !r.ok) throw new Error((r && r.erro) || 'Erro ao carregar.');
       // uma mudança feita durante a carga deixa esta resposta velha: carrega de novo
-      if (mutacaoAntes !== estado.mutacao) { estado.pendente = true; return false; }
+      if (mutacaoAntes !== estado.mutacao || estado.emVoo) { estado.pendente = true; return false; }
       receber(r, silencioso);
       return true;
     }).catch(function (e) {
@@ -396,7 +397,7 @@
     }).finally(function () {
       estado.carregando = false;
       $('atualizar').classList.remove('icone-btn--girando');
-      if (estado.pendente) { estado.pendente = false; setTimeout(function () { carregar(true); }, 300); }
+      if (estado.pendente && !estado.emVoo) { estado.pendente = false; setTimeout(function () { carregar(true); }, 300); }
     });
   }
 
@@ -466,7 +467,7 @@
     var info = lembrarTela();
     renderTopo();
     renderFiltros();
-    if (!(silencioso && focoPeso())) renderTickets();
+    renderTickets();
     renderResumo();
     renderProdutos(false);
     if (silencioso) restaurarTela(info);
@@ -509,7 +510,9 @@
       return '<li class="ticket__item' + (kg ? ' ticket__item--kg' : '') + '" data-id="' + esc(i.id) + '"><span class="ticket__q">' + i.qtd + '</span>' +
         '<span class="ticket__produto">' + nomeHTML(i.nome) + (kg ? '<small>' + dinheiro(i.preco) + ' o kg</small>' : '') + '</span>' +
         '<span class="ticket__valor">' + valorItemHTML(i) + '</span>' +
-        (kg && !p.cancelado ? pesoHTML(p, p.itens[k]) : '') + '</li>';
+        (kg && !p.cancelado
+          ? (estado.dados.catalogo ? pesoHTML(p, p.itens[k]) : '<p class="peso__aviso">Para digitar o peso aqui, atualize o script da planilha (LEIAME).</p>')
+          : '') + '</li>';
     }).join('');
     var contato = [];
     var fone = nacional(p.whatsapp);
@@ -567,9 +570,21 @@
       .filter(filtro.teste)
       .filter(function (p) { return combinaBusca(p, termo); })
       .sort(function (a, b) { return Number(b.numero) - Number(a.numero); });
+    var cont = $('tickets');
     var foco = focoPeso();
-    $('tickets').innerHTML = lista.map(ticketHTML).join('');
-    if (foco) voltarFocoPeso(foco);
+    var vivo = foco ? cont.querySelector('.ticket[data-numero="' + foco.numero + '"]') : null;
+    var pos = -1;
+    if (vivo) lista.forEach(function (p, k) { if (p.numero === foco.numero) pos = k; });
+    if (pos < 0) {
+      cont.innerHTML = lista.map(ticketHTML).join('');
+      if (foco) voltarFocoPeso(foco);
+    } else {
+      // redesenha os outros tickets em volta: o campo em uso continua com foco, texto e teclado abertos
+      [].slice.call(cont.children).forEach(function (el) { if (el !== vivo) cont.removeChild(el); });
+      vivo.insertAdjacentHTML('beforebegin', lista.slice(0, pos).map(ticketHTML).join(''));
+      vivo.insertAdjacentHTML('afterend', lista.slice(pos + 1).map(ticketHTML).join(''));
+      lista[pos].itens.forEach(function (i) { if (i.unidade === 'kg') atualizarPeso(foco.numero, i.id); });
+    }
     var vazio = $('tickets-vazio');
     if (lista.length) { vazio.hidden = true; return; }
     vazio.hidden = false;
@@ -646,11 +661,18 @@
     clearTimeout(recarregarTimer);
     recarregarTimer = setTimeout(function () { carregar(true); }, 1200);
   }
+  /** Enquanto uma gravação está a caminho, uma carga que chegue fica velha e é descartada. */
+  function inicioMutacao() { estado.mutacao++; estado.emVoo++; }
+  function fimMutacao() {
+    estado.mutacao++;
+    estado.emVoo = Math.max(0, estado.emVoo - 1);
+    if (!estado.emVoo && estado.pendente && !estado.carregando) { estado.pendente = false; recarregarDepois(); }
+  }
 
   function marcar(numero, campo, valor) {
     var p = estado.dados.pedidos.filter(function (x) { return x.numero === numero; })[0];
     if (!p) return;
-    estado.mutacao++;
+    inicioMutacao();
     var antes = p[campo];
     // próximo ticket da lista, para o foco não se perder se este sair do filtro
     var atual = document.querySelector('.ticket[data-numero="' + numero + '"]');
@@ -675,7 +697,7 @@
       renderFiltros();
       renderTickets();
       avisar('Não foi possível salvar o pedido nº ' + numero + '. Tente de novo.');
-    });
+    }).finally(fimMutacao);
   }
 
   function focarTicket(numero, campo) {
@@ -688,6 +710,7 @@
 
   /* ---------- produtos e preços ---------- */
   var edicao = {}; // id -> { preco: centavos | NaN, disponivel: bool }
+  var salvandoProdutos = false;
   function centavosDe(texto) {
     var s = String(texto || '').replace(/[R$\s]/g, '');
     if (!s) return NaN;
@@ -720,7 +743,7 @@
     var n = mudancasProdutos().length;
     $('produtos-barra').hidden = !n && !invalidos;
     $('produtos-mudancas').textContent = invalidos ? 'Confira o preço marcado em vermelho' : plural(n, 'alteração', 'alterações');
-    $('produtos-salvar').disabled = invalidos || !n;
+    $('produtos-salvar').disabled = salvandoProdutos || invalidos || !n;
   }
   function renderProdutos(forcar) {
     var caixa = $('produtos-lista');
@@ -782,7 +805,9 @@
     caixa.addEventListener('blur', function (e) {
       if (e.target.getAttribute('data-campo') !== 'preco') return;
       var id = e.target.closest('.produto').getAttribute('data-id');
-      if (edicao[id] && !isNaN(edicao[id].preco)) e.target.value = precoTexto(edicao[id].preco);
+      var o = original(id);
+      if (edicao[id] && edicao[id].preco !== undefined) { if (!isNaN(edicao[id].preco)) e.target.value = precoTexto(edicao[id].preco); }
+      else if (o) e.target.value = precoTexto(Math.round(o.preco * 100));
     }, true);
     caixa.addEventListener('click', function (e) {
       var sw = e.target.closest('[data-campo="disponivel"]');
@@ -802,24 +827,45 @@
     });
     $('produtos-salvar').addEventListener('click', function () {
       var lista = mudancasProdutos();
-      if (!lista.length) return;
+      if (!lista.length || salvandoProdutos) return;
       var botao = $('produtos-salvar');
-      botao.disabled = true;
+      salvandoProdutos = true;
       botao.textContent = 'Salvando…';
-      estado.mutacao++;
+      atualizarBarraProdutos();
+      inicioMutacao();
       chamarPainel({ acao: 'salvarProdutos', produtos: lista }).then(function (r) {
         if (!r || !r.ok) {
           if (r && r.codigo === 'acao') throw new Error('Atualize o script da planilha para salvar preços pelo painel (passo a passo no LEIAME).');
           throw new Error((r && r.erro) || 'Não foi possível salvar.');
         }
         estado.dados.catalogo = r.catalogo;
-        edicao = {};
-        renderProdutos(true);
+        // sai da edição só o que foi salvo; o que você mudou durante o envio continua pendente
+        lista.forEach(function (m) {
+          var e = edicao[m.id];
+          if (!e) return;
+          if (m.preco !== undefined && e.preco === Math.round(m.preco * 100)) { delete e.preco; delete e.texto; }
+          if (m.disponivel !== undefined && e.disponivel === m.disponivel) delete e.disponivel;
+          if (e.preco === undefined && e.disponivel === undefined) delete edicao[m.id];
+        });
+        var caixa = $('produtos-lista');
+        if (caixa.contains(document.activeElement)) {
+          [].forEach.call(caixa.querySelectorAll('.produto'), function (li) {
+            var id = li.getAttribute('data-id');
+            var campo = li.querySelector('input[data-campo="preco"]');
+            var o = original(id);
+            if (!edicao[id] && o && campo !== document.activeElement) campo.value = precoTexto(Math.round(o.preco * 100));
+            marcarLinha(li);
+          });
+        } else {
+          renderProdutos(true);
+        }
         avisar(lista.length === 1 ? 'Alteração salva. O site já usa o valor novo.' : 'Alterações salvas. O site já usa os valores novos.');
       }).catch(function (err) {
         if (err && err.silencioso) return;
-        avisar(err && err.message ? err.message : 'Não foi possível salvar. Tente de novo.', 6000);
+        avisar(err && !err.codigo && err.message ? err.message : 'Não foi possível salvar. Confira a internet e tente de novo.', 6000);
       }).finally(function () {
+        salvandoProdutos = false;
+        fimMutacao();
         botao.textContent = 'Salvar';
         atualizarBarraProdutos();
       });
@@ -832,11 +878,54 @@
     var papel = document.querySelector('input[name="papel"]:checked');
     return { papel: papel ? papel.value : '80', separar: $('imp-separar').checked, pessoas: $('imp-pessoas').checked };
   }
+  /** Junta os itens por produto a partir dos pedidos da tela (mesma regra do resumo da planilha). */
+  function produtosDe(pedidos) {
+    var info = {};
+    ((estado.dados.resumo && estado.dados.resumo.produtos) || []).forEach(function (p, k) { info[p.id || p.nome] = { categoria: p.categoria, ordem: k }; });
+    var chaveNome = function (n) { return normaliza(n).replace(/\s+/g, ' ').trim(); };
+    var chave = function (p) { return p.email || 'nome:' + chaveNome(p.nome); };
+    var nomes = {};
+    var contagem = {};
+    pedidos.forEach(function (p) {
+      var c = chave(p);
+      if (nomes[c] !== undefined) return;
+      nomes[c] = p.nome;
+      contagem[chaveNome(p.nome)] = (contagem[chaveNome(p.nome)] || 0) + 1;
+    });
+    var rotulo = function (c) {
+      return contagem[chaveNome(nomes[c])] > 1 && c.indexOf('nome:') !== 0 ? nomes[c] + ' (' + c.split('@')[0] + ')' : nomes[c];
+    };
+    var prods = {};
+    var lista = [];
+    pedidos.forEach(function (p) {
+      var c = chave(p);
+      p.itens.forEach(function (i) {
+        var k = i.id || i.nome;
+        var pr = prods[k];
+        if (!pr) {
+          var inf = info[k] || {};
+          pr = prods[k] = { nome: i.nome, categoria: inf.categoria || 'Outros', ordem: inf.ordem !== undefined ? inf.ordem : 9999, qtd: 0, gramas: 0, temPeso: false, quem: [], pos: {} };
+          lista.push(pr);
+        }
+        pr.qtd += i.qtd;
+        if (i.subtotal === null) pr.temPeso = true;
+        if (i.peso) pr.gramas += Math.round(i.peso * 1000);
+        if (pr.pos[c] === undefined) { pr.pos[c] = pr.quem.length; pr.quem.push({ nome: rotulo(c), qtd: 0 }); }
+        pr.quem[pr.pos[c]].qtd += i.qtd;
+      });
+    });
+    return lista.sort(function (a, b) { return a.ordem - b.ordem || a.nome.localeCompare(b.nome); });
+  }
   function montarImpressao(op) {
     var d = estado.dados;
-    var r = d.resumo;
-    var ativos = d.pedidos.filter(function (p) { return !p.cancelado; })
+    var ativos = d.pedidos.filter(function (p) { return !p.cancelado; }).map(pedidoEfetivo)
       .sort(function (a, b) { return Number(a.numero) - Number(b.numero); });
+    var produtos = produtosDe(ativos);
+    var r = { itens: 0, total: 0, temPeso: false };
+    ativos.forEach(function (p) {
+      r.total += p.total;
+      p.itens.forEach(function (i) { r.itens += i.qtd; if (i.subtotal === null) r.temPeso = true; });
+    });
     var agora = new Date();
     var dois = function (n) { return String(n).padStart(2, '0'); };
     var quando = dois(agora.getDate()) + '/' + dois(agora.getMonth() + 1) + '/' + agora.getFullYear() + ' ' + dois(agora.getHours()) + ':' + dois(agora.getMinutes());
@@ -844,7 +933,7 @@
     if (op.separar) {
       h += '<h2 class="imp__titulo">Separar: ' + plural(r.itens, 'item', 'itens') + '</h2>';
       var cat = null;
-      r.produtos.forEach(function (p) {
+      produtos.forEach(function (p) {
         if (p.categoria !== cat) { cat = p.categoria; h += '<p class="imp__cat">' + esc(cat) + '</p>'; }
         h += '<div class="imp__prod"><span class="imp__caixa"></span><span class="imp__qtd">' + p.qtd + '</span>' +
           '<span class="imp__nome">' + nomeHTML(p.nome) + (p.gramas ? ' (' + kgTexto(p.gramas) + (p.temPeso ? ' + pesar' : '') + ')' : (p.temPeso ? ' (pesar)' : '')) +
@@ -886,9 +975,19 @@
       if (!op.separar && !op.pessoas) { avisar('Marque o que você quer imprimir.'); return; }
       if (!estado.dados || !estado.dados.pedidos.some(function (p) { return !p.cancelado; })) { avisar('Não há pedidos nesta rodada para imprimir.'); return; }
       try { localStorage.setItem(K_IMPRESSAO, JSON.stringify(op)); } catch (e) { /* sem armazenamento */ }
-      montarImpressao(op);
+      prepararImpressao();
       window.print();
     });
+    // Ctrl+P ou o menu do navegador também imprimem a lista, com as opções marcadas
+    window.addEventListener('beforeprint', prepararImpressao);
+  }
+  function prepararImpressao() {
+    var pronto = !!estado.dados && !$('app').hidden;
+    document.body.classList.toggle('imprimir-lista', pronto);
+    if (!pronto) return;
+    var op = opcoesImpressao();
+    if (!op.separar && !op.pessoas) { op.separar = true; op.pessoas = true; }
+    montarImpressao(op);
   }
 
   var ABAS = ['tickets', 'resumo', 'produtos'];
@@ -1011,7 +1110,7 @@
     $('aberto').addEventListener('click', function () {
       var novo = $('aberto').getAttribute('aria-checked') !== 'true';
       $('aberto').setAttribute('aria-checked', String(novo));
-      estado.mutacao++;
+      inicioMutacao();
       chamarPainel({ acao: 'loja', aberto: novo }).then(function (r) {
         if (!r || !r.ok) throw new Error('erro');
         estado.dados.aberto = r.aberto;
@@ -1021,23 +1120,23 @@
         if (e && e.silencioso) return;
         $('aberto').setAttribute('aria-checked', String(!novo));
         avisar('Não foi possível salvar. Tente de novo.');
-      });
+      }).finally(fimMutacao);
     });
     $('form-aviso').addEventListener('submit', function (e) {
       e.preventDefault();
       var texto = $('aviso').value.trim();
-      estado.mutacao++;
+      inicioMutacao();
       chamarPainel({ acao: 'loja', aviso: texto }).then(function (r) {
         if (!r || !r.ok) throw new Error('erro');
         estado.dados.aviso = r.aviso;
         avisar(r.aviso ? 'Aviso salvo. Já aparece no site.' : 'Aviso removido do site.');
-      }).catch(function (err) { if (!err || !err.silencioso) avisar('Não foi possível salvar o aviso.'); });
+      }).catch(function (err) { if (!err || !err.silencioso) avisar('Não foi possível salvar o aviso.'); }).finally(fimMutacao);
     });
     $('nova-rodada').addEventListener('click', function () {
       var atual = estado.dados.rodadaAtual;
       confirmar('Começar a rodada ' + (atual + 1) + '?', 'Os pedidos da rodada ' + atual + ' continuam salvos. A partir de agora, os pedidos do site entram na rodada ' + (atual + 1) + '.', 'Começar rodada ' + (atual + 1)).then(function (sim) {
         if (!sim) return;
-        estado.mutacao++;
+        inicioMutacao();
         chamarPainel({ acao: 'novaRodada' }).then(function (r) {
           if (!r || !r.ok) throw new Error('erro');
           estado.rodadaFixa = null;
@@ -1046,8 +1145,14 @@
           estado.novos.clear();
           avisar('Rodada ' + r.rodada + ' começou.');
           trocarAba('tickets');
-          carregar(false);
-        }).catch(function (e) { if (!e || !e.silencioso) avisar('Não foi possível começar a nova rodada.'); });
+          return true;
+        }).catch(function (e) {
+          if (!e || !e.silencioso) avisar('Não foi possível começar a nova rodada.');
+          return false;
+        }).then(function (ok) {
+          fimMutacao();
+          if (ok) carregar(false);
+        });
       });
     });
 
