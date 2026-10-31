@@ -48,7 +48,7 @@ Em 1 ou 2 minutos o site fica no ar no endereço acima.
 ## No dia a dia
 
 - **Compartilhar:** mande o link do site no grupo. A prévia no WhatsApp mostra o logo.
-- **Controlar:** no painel, filtre por *A pagar* ou *A entregar* e marque os tickets. Toque no telefone do ticket para falar com a pessoa no WhatsApp.
+- **Controlar:** a lista *Em aberto* mostra só o que falta pagar ou entregar. Quando um ticket fica **Pago** e **Entregue**, ele vai para *Concluídos*. *Todos* mostra a rodada inteira. Toque no telefone do ticket para falar com a pessoa no WhatsApp.
 - **Pedir ao DuJOÃO:** aba **Resumo → Copiar resumo para o WhatsApp**.
 - **Cobrar:** aba **Resumo → Copiar valores**. Quem já pagou aparece com "(pago)", e quem pagou só parte aparece com quanto falta.
 - **Fechar para novos pedidos:** desligue *Recebendo pedidos* no Resumo.

@@ -11,7 +11,7 @@
     token: '',
     dados: null,
     rodadaFixa: null,   // só fica preenchida quando você escolhe uma rodada antiga
-    filtro: 'ativos',
+    filtro: 'abertos',
     busca: '',
     vistos: null,
     vistosRodada: null,
@@ -227,11 +227,14 @@
   }
 
   /* ---------- renderização ---------- */
+  // Em aberto = falta pagar ou entregar. Pago + entregue vai para Concluídos.
+  function emAberto(p) { return !p.cancelado && !(p.pago && p.entregue); }
   var FILTROS = [
-    { id: 'ativos', nome: 'Ativos', teste: function (p) { return !p.cancelado; } },
+    { id: 'abertos', nome: 'Em aberto', teste: emAberto },
     { id: 'a-pagar', nome: 'A pagar', teste: function (p) { return !p.cancelado && !p.pago; } },
     { id: 'a-entregar', nome: 'A entregar', teste: function (p) { return !p.cancelado && !p.entregue; } },
     { id: 'concluidos', nome: 'Concluídos', teste: function (p) { return !p.cancelado && p.pago && p.entregue; } },
+    { id: 'todos', nome: 'Todos', teste: function (p) { return !p.cancelado; } },
     { id: 'cancelados', nome: 'Cancelados', teste: function (p) { return p.cancelado; } }
   ];
   function filtroAtual() { return FILTROS.filter(function (f) { return f.id === estado.filtro; })[0] || FILTROS[0]; }
@@ -280,7 +283,7 @@
     var st = $('status-loja');
     st.textContent = d.aberto ? 'Recebendo pedidos' : 'Pedidos fechados';
     st.className = 'status-loja ' + (d.aberto ? 'status-loja--aberto' : 'status-loja--fechado');
-    $('n-tickets').textContent = d.pedidos.filter(function (p) { return !p.cancelado; }).length;
+    $('n-tickets').textContent = d.pedidos.filter(emAberto).length;
   }
 
   function renderFiltros() {
@@ -367,6 +370,8 @@
       var outros = estado.dados.pedidos.filter(function (p) { return combinaBusca(p, termo); }).length;
       vazio.innerHTML = '<strong>Nada encontrado em ' + esc(filtro.nome) + ' para "' + esc(estado.busca.trim()) + '".</strong>' +
         (outros ? 'Há ' + plural(outros, 'pedido', 'pedidos') + ' com esse termo em outros filtros.' : 'Confira o nome ou o número do pedido.');
+    } else if (filtro.id === 'abertos') {
+      vazio.innerHTML = '<strong>Tudo em dia.</strong>Todos os pedidos desta rodada estão pagos e entregues. Eles ficam em Concluídos.';
     } else {
       vazio.innerHTML = '<strong>Nenhum ticket em ' + esc(filtro.nome) + '.</strong>Escolha outro filtro acima.';
     }
@@ -449,7 +454,8 @@
     chamarPainel({ acao: 'marcar', numero: numero, campo: campo, valor: valor }).then(function (r) {
       if (!r || !r.ok) throw new Error((r && r.erro) || 'erro');
       var rotulos = { pago: valor ? 'marcado como pago' : 'voltou para a pagar', entregue: valor ? 'marcado como entregue' : 'voltou para a entregar', cancelado: valor ? 'cancelado' : 'reativado' };
-      avisar('Pedido nº ' + numero + ' ' + rotulos[campo] + '.');
+      var fim = !p.cancelado && p.pago && p.entregue && (campo === 'pago' || campo === 'entregue') && valor;
+      avisar(fim ? 'Pedido nº ' + numero + ' concluído. Ele foi para Concluídos.' : 'Pedido nº ' + numero + ' ' + rotulos[campo] + '.');
       recarregarDepois();
     }).catch(function (e) {
       if (e && e.silencioso) return;
