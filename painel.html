@@ -33,8 +33,9 @@
       <p class="entrada__texto" id="entrada-texto">Digite a senha do painel para ver os pedidos.</p>
       <div class="campo">
         <label for="senha">Senha</label>
-        <input id="senha" type="password" autocomplete="current-password" required aria-describedby="entrada-erro">
+        <input id="senha" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required aria-describedby="entrada-erro">
       </div>
+      <label class="lembrar"><input type="checkbox" id="mostrar-senha"> Mostrar senha</label>
       <label class="lembrar"><input type="checkbox" id="lembrar" checked> Lembrar neste aparelho</label>
       <div class="alerta" id="entrada-erro" role="alert" hidden></div>
       <button class="btn btn--primario btn--largo" id="entrar" type="submit" style="margin-top:16px">Entrar</button>

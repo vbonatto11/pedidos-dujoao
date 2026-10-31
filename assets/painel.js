@@ -513,6 +513,7 @@
 
   function ligarEventos() {
     $('form-entrada').addEventListener('submit', entrar);
+    $('mostrar-senha').addEventListener('change', function (e) { $('senha').type = e.target.checked ? 'text' : 'password'; });
     $('atualizar').addEventListener('click', function () { carregar(false); });
     $('sair').addEventListener('click', function () {
       apagarToken();
