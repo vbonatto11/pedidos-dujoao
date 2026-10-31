@@ -153,7 +153,7 @@
 
   function entrar(e) {
     e.preventDefault();
-    var senha = $('senha').value;
+    var senha = $('senha').value.trim(); // ignora espaço sobrando ao colar
     if (!senha) { $('senha').focus(); return; }
     var botao = $('entrar');
     botao.disabled = true;
