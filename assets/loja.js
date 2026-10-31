@@ -84,7 +84,7 @@
   /* ---------- catálogo ---------- */
   function extrasLocais() {
     var f = {};
-    BASE.produtos.forEach(function (p) { f[p.id] = { foto: p.foto || '', selo: p.selo || '' }; });
+    BASE.produtos.forEach(function (p) { f[p.id] = { foto: p.foto || '', fotoGrande: p.fotoGrande || '', selo: p.selo || '' }; });
     return f;
   }
   function normalizaProduto(p, catId, extra) {
@@ -98,6 +98,7 @@
       unidade: p.unidade === 'kg' ? 'kg' : 'un',
       disponivel: p.disponivel !== false,
       foto: (extra && extra.foto) || '',
+      fotoGrande: (extra && extra.fotoGrande) || '',
       selo: (extra && extra.selo) || ''
     };
   }
@@ -199,7 +200,7 @@
   function itemHTML(p) {
     var foto;
     if (p.foto) {
-      foto = '<div class="item__foto"><img src="' + esc(p.foto) + '" alt="" width="96" height="96" loading="lazy" decoding="async"></div>';
+      foto = '<button type="button" class="item__foto item__foto--botao" data-ver="' + esc(p.id) + '" aria-label="Ampliar foto: ' + esc(p.nome) + '"><img src="' + esc(p.foto) + '" alt="" width="96" height="96" loading="lazy" decoding="async"></button>';
     } else {
       var s = seloDe(p);
       foto = s
@@ -288,6 +289,7 @@
     anunciar((p.curto || p.nome) + ': ' + (novo ? plural(novo, 'unidade', 'unidades') + ' no pedido' : 'removido do pedido'));
     if (!novo) {
       if (naComanda) { var titulo = $('comanda-titulo'); if (titulo) titulo.focus({ preventScroll: true }); }
+      else if (origem && origem.closest('#visor')) { var mv = $('visor').querySelector('.qtd__mais'); if (mv) mv.focus(); }
       else if (origem) focarControle(id, 'mais');
     }
   }
@@ -873,6 +875,158 @@
     atualizarRepetir();
   }
 
+  /* ---------- visor de foto: zoom com dois dedos, toque duplo ou rodinha ---------- */
+  var visorOrigem = null;
+  var zoom = (function () {
+    var palco, img, s = 1, tx = 0, ty = 0, inicio = null, ultimoToque = 0, moveu = false, fimGesto = 0;
+    var ponteiros = new Map();
+    function aplicar(animar) {
+      img.style.transition = animar && !mqReduzido.matches ? 'transform .2s ease' : 'none';
+      img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
+      palco.classList.toggle('visor__palco--zoom', s > 1.01);
+    }
+    function limitar() {
+      if (s <= 1.001) { s = 1; tx = 0; ty = 0; return; }
+      var mx = (s - 1) * palco.clientWidth / 2;
+      var my = (s - 1) * palco.clientHeight / 2;
+      tx = Math.max(-mx, Math.min(mx, tx));
+      ty = Math.max(-my, Math.min(my, ty));
+    }
+    function relativo(x, y) {
+      var r = palco.getBoundingClientRect();
+      return { x: x - r.left - r.width / 2, y: y - r.top - r.height / 2 };
+    }
+    // mantém parado o ponto (px, py) da tela enquanto muda a escala
+    function zoomEm(px, py, novo, animar) {
+      novo = Math.max(1, Math.min(4, novo));
+      tx = px - (novo / s) * (px - tx);
+      ty = py - (novo / s) * (py - ty);
+      s = novo;
+      limitar();
+      aplicar(animar);
+    }
+    function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y) || 1; }
+    function meio(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+    function fim(e) {
+      if (!ponteiros.has(e.pointerId)) return;
+      ponteiros.delete(e.pointerId);
+      if (ponteiros.size < 2) inicio = null;
+      if (moveu) fimGesto = Date.now();
+      if (e.pointerType !== 'mouse' && !moveu && ponteiros.size === 0) {
+        var agora = Date.now();
+        if (agora - ultimoToque < 320) {
+          var p = relativo(e.clientX, e.clientY);
+          zoomEm(p.x, p.y, s > 1.01 ? 1 : 2.5, true);
+          ultimoToque = 0;
+          fimGesto = agora;
+        } else {
+          ultimoToque = agora;
+        }
+      }
+    }
+    function iniciar(p, i) {
+      palco = p;
+      img = i;
+      palco.addEventListener('pointerdown', function (e) {
+        try { palco.setPointerCapture(e.pointerId); } catch (err) { /* ignorar */ }
+        ponteiros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        moveu = false;
+        if (ponteiros.size === 2) {
+          var pts = Array.from(ponteiros.values());
+          inicio = { d: dist(pts[0], pts[1]), s: s, tx: tx, ty: ty, m: relativo(meio(pts[0], pts[1]).x, meio(pts[0], pts[1]).y) };
+        }
+      });
+      palco.addEventListener('pointermove', function (e) {
+        if (!ponteiros.has(e.pointerId)) return;
+        var antes = ponteiros.get(e.pointerId);
+        ponteiros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (ponteiros.size === 2 && inicio) {
+          var pts = Array.from(ponteiros.values());
+          var m = meio(pts[0], pts[1]);
+          var agora = relativo(m.x, m.y);
+          var novo = Math.max(1, Math.min(4, inicio.s * dist(pts[0], pts[1]) / inicio.d));
+          tx = inicio.m.x - (novo / inicio.s) * (inicio.m.x - inicio.tx) + (agora.x - inicio.m.x);
+          ty = inicio.m.y - (novo / inicio.s) * (inicio.m.y - inicio.ty) + (agora.y - inicio.m.y);
+          s = novo;
+          limitar();
+          aplicar(false);
+          moveu = true;
+        } else if (ponteiros.size === 1 && s > 1) {
+          var dx = e.clientX - antes.x;
+          var dy = e.clientY - antes.y;
+          tx += dx;
+          ty += dy;
+          limitar();
+          aplicar(false);
+          if (Math.abs(dx) + Math.abs(dy) > 1) moveu = true;
+        }
+      });
+      palco.addEventListener('pointerup', fim);
+      palco.addEventListener('pointercancel', fim);
+      palco.addEventListener('dblclick', function (e) {
+        if (Date.now() - fimGesto < 450) return; // o toque duplo já foi tratado
+        var p = relativo(e.clientX, e.clientY);
+        zoomEm(p.x, p.y, s > 1.01 ? 1 : 2.5, true);
+      });
+      palco.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        var p = relativo(e.clientX, e.clientY);
+        zoomEm(p.x, p.y, s * (e.deltaY < 0 ? 1.18 : 1 / 1.18), false);
+      }, { passive: false });
+    }
+    return {
+      iniciar: iniciar,
+      reset: function () { s = 1; tx = 0; ty = 0; ponteiros.clear(); inicio = null; if (img) aplicar(false); },
+      passo: function (fator) { zoomEm(0, 0, s * fator, true); },
+      gestoRecente: function () { return Date.now() - fimGesto < 400; }
+    };
+  })();
+
+  function abrirVisor(id, origem) {
+    var p = estado.porId.get(id);
+    var d = $('visor');
+    if (!p || !p.foto || !d || !d.showModal) return;
+    visorOrigem = origem || null;
+    var img = $('visor-foto');
+    img.src = p.fotoGrande || p.foto;
+    img.alt = p.nome;
+    $('visor-nome').innerHTML = html(p.curto || p.nome);
+    $('visor-detalhe').innerHTML = p.detalhe ? html(p.detalhe) : '';
+    $('visor-detalhe').hidden = !p.detalhe;
+    $('visor-preco').innerHTML = p.unidade === 'kg' ? dinheiro(p.preco) + ' <small>o kg</small>' : dinheiro(p.preco);
+    $('visor-qtd').innerHTML = p.disponivel ? qtdHTML(p, false) : '<span class="item__esgotado">Esgotado</span>';
+    $('visor-dica').textContent = window.matchMedia('(hover: none)').matches
+      ? 'Toque duas vezes ou use dois dedos para dar zoom. Toque fora para fechar.'
+      : 'Clique duas vezes ou use a rodinha do mouse para dar zoom. Clique fora para fechar.';
+    atualizarItem(id);
+    atualizarEstadoLoja();
+    zoom.reset();
+    d.showModal();
+    document.documentElement.style.overflow = 'hidden';
+    $('visor-fechar').focus({ preventScroll: true });
+  }
+  function ligarVisor() {
+    var d = $('visor');
+    if (!d) return;
+    zoom.iniciar($('visor-palco'), $('visor-foto'));
+    $('visor-fechar').addEventListener('click', function () { d.close(); });
+    // toque fora da foto e do cartão fecha (mas não logo depois de arrastar ou dar zoom)
+    d.addEventListener('click', function (e) {
+      if (e.target === d && !zoom.gestoRecente()) d.close();
+    });
+    d.addEventListener('keydown', function (e) {
+      if (e.key === '+' || e.key === '=') { zoom.passo(1.5); e.preventDefault(); }
+      else if (e.key === '-') { zoom.passo(1 / 1.5); e.preventDefault(); }
+      else if (e.key === '0') { zoom.reset(); e.preventDefault(); }
+    });
+    d.addEventListener('close', function () {
+      if (!comandaAberta) document.documentElement.style.overflow = '';
+      $('visor-qtd').innerHTML = '';
+      if (visorOrigem && document.body.contains(visorOrigem)) visorOrigem.focus({ preventScroll: true });
+      visorOrigem = null;
+    });
+  }
+
   function copiar(texto) {
     if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(texto);
     return new Promise(function (ok, falha) {
@@ -901,6 +1055,8 @@
         copiar(chavePixCopiavel(CFG.pix)).then(function () { avisar('Chave PIX copiada.'); }, function () { avisar('Não foi possível copiar. Anote a chave: ' + CFG.pix.chave, 6000); });
         return;
       }
+      var ver = e.target.closest('[data-ver]');
+      if (ver) { abrirVisor(ver.getAttribute('data-ver'), ver); return; }
       if (e.target.closest('#ir-dados')) { irParaDados(); return; }
       if (e.target.closest('#repetir-btn')) { repetirPedido(); return; }
       if (e.target.closest('#novo-pedido')) {
@@ -923,6 +1079,7 @@
       if (e.key === 'Escape' && comandaAberta) fecharComanda();
     });
     $('form').addEventListener('submit', enviar);
+    ligarVisor();
     ['nome', 'email'].forEach(function (campo) {
       $(campo).addEventListener('input', function () {
         if ($('campo-' + campo).classList.contains('campo--erro')) marcarErro(campo, '');

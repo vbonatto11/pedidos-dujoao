@@ -20,9 +20,9 @@ window.CATALOGO_DUJOAO = {
   ],
 
   produtos: [
-    { id: 'torresmo-180', cat: 'prontos', nome: 'Torresmo 180 g', detalhe: 'Torresmos Premium, pote', preco: 28.00, foto: 'assets/img/torresmo-180.webp' },
+    { id: 'torresmo-180', cat: 'prontos', nome: 'Torresmo 180 g', detalhe: 'Torresmos Premium, pote', preco: 28.00, foto: 'assets/img/torresmo-180.webp', fotoGrande: 'assets/img/torresmo-180-g.webp' },
     { id: 'torresmo-60', cat: 'prontos', nome: 'Torresmo 60 g', detalhe: 'Torresmos Premium', preco: 13.00 },
-    { id: 'pururuca-135', cat: 'prontos', nome: 'Pururuca 135 g', detalhe: 'Pururuca tradicional', preco: 15.00, foto: 'assets/img/pururuca.webp' },
+    { id: 'pururuca-135', cat: 'prontos', nome: 'Pururuca 135 g', detalhe: 'Pururuca tradicional', preco: 15.00, foto: 'assets/img/pururuca.webp', fotoGrande: 'assets/img/pururuca-g.webp' },
     { id: 'farofa-160', cat: 'prontos', nome: 'Farofa de mandioca com torresmo 160 g', preco: 8.00 },
     { id: 'farofa-450', cat: 'prontos', nome: 'Farofa de mandioca com torresmo 450 g', preco: 20.00 },
 
@@ -36,7 +36,7 @@ window.CATALOGO_DUJOAO = {
     { id: 'vulcao-nozes', cat: 'vulcao', nome: 'Linguiça Vulcão Nozes', curto: 'Nozes', selo: '4 un', detalhe: 'Cream cheese, nozes e provolone', preco: 49.90 },
     { id: 'vulcao-romeu-julieta', cat: 'vulcao', nome: 'Linguiça Vulcão Romeu e Julieta', curto: 'Romeu e Julieta', selo: '4 un', detalhe: 'Mussarela, parmesão e goiabada', preco: 49.90 },
 
-    { id: 'porchetta-400', cat: 'congelados', nome: 'Porchetta 400 g', curto: 'Porchetta', detalhe: 'Peça com 400 g (R$ 75,00 o kg)', preco: 30.00, foto: 'assets/img/porchetta.webp' },
+    { id: 'porchetta-400', cat: 'congelados', nome: 'Porchetta 400 g', curto: 'Porchetta', detalhe: 'Peça com 400 g (R$ 75,00 o kg)', preco: 30.00, foto: 'assets/img/porchetta.webp', fotoGrande: 'assets/img/porchetta-g.webp' },
     { id: 'hamburguer-provolone', cat: 'congelados', nome: 'Hambúrguer suíno recheado com provolone 600 g', curto: 'Hambúrguer suíno recheado com provolone', detalhe: '600 g, 3 unidades', preco: 22.00 },
     { id: 'codeguim-500', cat: 'congelados', nome: 'Codeguim 500 g', preco: 17.00 },
     { id: 'joelho-porco', cat: 'congelados', nome: 'Joelho de porco semi-pronto', detalhe: 'Cobrado pelo peso da peça', preco: 39.90, unidade: 'kg' },

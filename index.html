@@ -170,6 +170,26 @@
     </button>
   </div>
   <div class="fundo" id="fundo" hidden></div>
+  <dialog class="visor" id="visor" aria-labelledby="visor-nome">
+    <button class="visor__fechar" id="visor-fechar" type="button" aria-label="Fechar foto">
+      <svg aria-hidden="true"><use href="#i-fechar"/></svg>
+    </button>
+    <div class="visor__palco" id="visor-palco">
+      <img class="visor__foto" id="visor-foto" alt="" draggable="false">
+    </div>
+    <p class="visor__dica" id="visor-dica"></p>
+    <div class="visor__info papel">
+      <div>
+        <h2 class="visor__nome" id="visor-nome"></h2>
+        <p class="visor__detalhe" id="visor-detalhe"></p>
+      </div>
+      <div class="visor__base">
+        <span class="visor__preco" id="visor-preco"></span>
+        <div id="visor-qtd"></div>
+      </div>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

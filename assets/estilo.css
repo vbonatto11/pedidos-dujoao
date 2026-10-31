@@ -818,6 +818,49 @@ h1, h2, h3, p { margin: 0; }
 }
 .ticket__cobrar svg { width: 18px; height: 18px; }
 
+/* Visor de foto (toque na foto do produto) */
+.item__foto--botao { padding: 0; border: 0; cursor: zoom-in; }
+.visor {
+  width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0;
+  background: transparent; color: var(--texto);
+  overflow: hidden;
+}
+.visor::backdrop { background: rgba(18, 4, 4, 0.86); }
+.visor[open] {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  animation: visor-entra .22s ease-out;
+}
+@keyframes visor-entra { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.visor__palco {
+  position: relative; flex: none;
+  width: min(92vw, 600px, calc(100vh - 290px)); width: min(92vw, 600px, calc(100dvh - 290px));
+  aspect-ratio: 1;
+  border-radius: 16px; overflow: hidden;
+  background: #2a0807;
+  touch-action: none; cursor: zoom-in;
+  -webkit-user-select: none; user-select: none;
+}
+.visor__palco--zoom { cursor: grab; }
+.visor__palco--zoom:active { cursor: grabbing; }
+.visor__foto { width: 100%; height: 100%; object-fit: contain; transform-origin: center; will-change: transform; -webkit-user-drag: none; }
+.visor__dica { font-size: 13px; color: var(--texto-2); text-align: center; }
+.visor__info { width: min(92vw, 600px); padding: 14px 16px; border-radius: 16px; display: grid; gap: 10px; }
+.visor__nome { font: 700 22px/1.15 var(--serif); color: var(--vinho); }
+.visor__detalhe { margin-top: 4px; font-size: 14.5px; color: var(--tinta-2); }
+.visor__base { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.visor__preco { font: 800 20px/1 var(--sans); color: var(--vinho); font-variant-numeric: tabular-nums; }
+.visor__preco small { font-size: 13px; font-weight: 600; }
+.visor .item__esgotado { color: var(--tinta-2); }
+.visor__fechar {
+  position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; z-index: 2;
+  display: grid; place-items: center;
+  width: 48px; height: 48px; border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5); color: #fff;
+}
+.visor__fechar svg { width: 24px; height: 24px; }
+
 /* Efeitos de passar o mouse: só em aparelhos com mouse (no toque eles "grudam") */
 @media (hover: hover) {
   .chip:hover { border-color: var(--ouro); }
