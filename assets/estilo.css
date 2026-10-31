@@ -861,6 +861,120 @@ h1, h2, h3, p { margin: 0; }
 }
 .visor__fechar svg { width: 24px; height: 24px; }
 
+/* Painel: opções de impressão */
+.opcoes { margin: 14px 0 0; padding: 0; border: 0; min-width: 0; }
+.opcoes legend { padding: 0; margin-bottom: 8px; }
+.opcoes .lembrar { margin-top: 0; min-height: 40px; }
+.segmentos { display: flex; flex-wrap: wrap; gap: 8px; }
+.segmentos label { position: relative; }
+.segmentos input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.segmentos span {
+  display: inline-flex; align-items: center;
+  min-height: 44px; padding: 0 14px;
+  border: 1.5px solid var(--borda-campo); border-radius: 999px;
+  background: #fff; font-size: 14.5px; font-weight: 700; cursor: pointer;
+}
+.segmentos input:checked + span { background: var(--vinho); border-color: var(--vinho); color: #fff; }
+.segmentos input:focus-visible + span { outline: 3px solid var(--vinho); outline-offset: 2px; }
+
+/* Painel: preços e produtos */
+.cartao--produtos { max-width: 760px; }
+.produtos { list-style: none; margin: 4px 0 0; padding: 0; }
+.produto {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 12px;
+  padding: 10px 0; border-bottom: 1.5px dashed var(--tinta-linha);
+}
+.produto--mudou { box-shadow: inset 4px 0 0 var(--ouro); padding-left: 10px; }
+.produto__nome { font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.produto__estado { margin-top: 1px; font-size: 13px; font-weight: 700; color: var(--verde); }
+.produto--esgotado .produto__nome { color: var(--tinta-2); }
+.produto--esgotado .produto__estado { color: var(--erro); }
+.produto__preco {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 44px; padding: 0 10px;
+  border: 1.5px solid var(--borda-campo); border-radius: 10px;
+  background: #fff; font-weight: 700; line-height: 1; color: var(--tinta-2);
+}
+.produto__preco input {
+  width: 4.4em; padding: 8px 0; border: 0; outline: none; background: transparent;
+  font: 700 16px/1 var(--sans); color: var(--tinta); text-align: right; font-variant-numeric: tabular-nums;
+}
+.produto__preco:focus-within { border-color: var(--vinho); box-shadow: 0 0 0 3px rgba(100, 19, 18, 0.16); }
+.produto__preco--erro, .produto__preco--erro:focus-within { border-color: var(--erro); box-shadow: 0 0 0 3px rgba(179, 38, 30, 0.18); }
+.produto__un { font-size: 13px; }
+.produtos__barra {
+  position: sticky; bottom: 0; z-index: 10;
+  display: flex; align-items: center; gap: 10px;
+  max-width: 760px; margin: 16px 0 0;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  border: 1px solid var(--ouro); border-radius: 14px;
+  background: var(--vinho-escuro);
+  box-shadow: 0 -10px 30px -12px rgba(0, 0, 0, 0.6);
+}
+.produtos__mudancas { flex: 1; font-weight: 700; }
+.produtos__barra .btn { min-height: 46px; }
+.produtos__barra .btn--texto { color: var(--texto); }
+@media (max-width: 380px) { .produto { grid-template-columns: minmax(0, 1fr) auto; } .produto .interruptor { grid-column: 2; } }
+
+/* Painel: peso dos itens vendidos por quilo */
+.ticket__produto small { display: block; margin-top: 1px; font-size: 13px; color: var(--tinta-2); }
+.ticket__pesar { font-weight: 700; color: var(--ambar); }
+.peso { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 4px; }
+.peso__campo {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 0 10px;
+  border: 1.5px solid var(--borda-campo); border-radius: 10px;
+  background: #fff; font-weight: 700; line-height: 1; color: var(--tinta-2); cursor: text;
+}
+.peso__rotulo { font-size: 13px; }
+.peso__campo input {
+  width: 4.6em; padding: 8px 0; border: 0; outline: none; background: transparent;
+  font: 700 16px/1 var(--sans); color: var(--tinta); text-align: right; font-variant-numeric: tabular-nums;
+}
+.peso__campo input::placeholder { color: #b3a29e; }
+.peso__campo:focus-within { border-color: var(--vinho); box-shadow: 0 0 0 3px rgba(100, 19, 18, 0.16); }
+.peso--falta .peso__campo { border-style: dashed; border-color: var(--ouro-escuro); background: var(--ambar-suave); }
+.peso--erro .peso__campo, .peso--erro .peso__campo:focus-within { border-color: var(--erro); box-shadow: 0 0 0 3px rgba(179, 38, 30, 0.16); }
+.peso__salvar {
+  min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px;
+  background: var(--vinho); color: #fff; font: 700 14.5px/1 var(--sans); cursor: pointer;
+}
+.peso__salvar:disabled { background: var(--tinta-2); cursor: progress; }
+.peso__salvar[hidden] { display: none; }
+.peso__calc { flex: 1 1 13em; font-size: 13.5px; line-height: 1.35; color: var(--tinta-2); font-variant-numeric: tabular-nums; }
+.peso__calc b { color: var(--tinta); }
+.peso--erro .peso__calc { color: var(--erro); font-weight: 600; }
+.peso__falhou { color: var(--erro); font-weight: 700; }
+
+/* Impressão: lista para separar (térmica 80/58 mm ou A4) */
+.impressao { display: none; }
+@media print {
+  @page { margin: 3mm; }
+  html, body { background: #fff !important; color: #000 !important; }
+  body > *:not(.impressao) { display: none !important; }
+  .impressao { display: block !important; color: #000; font-family: Arial, Helvetica, sans-serif; line-height: 1.3; }
+  .impressao--80 { width: 72mm; font-size: 12.5px; }
+  .impressao--58 { width: 48mm; font-size: 11px; }
+  .impressao--a4 { width: auto; font-size: 13px; }
+  .imp__cab { padding-bottom: 2mm; border-bottom: 1.5px dashed #000; text-align: center; }
+  .imp__marca { font-size: 1.6em; font-weight: 800; letter-spacing: .12em; }
+  .imp__titulo { margin: 3mm 0 1mm; font-size: 1.15em; font-weight: 800; }
+  .imp__cat { margin-top: 2mm; border-bottom: 1px solid #000; font-size: .85em; font-weight: 800; text-transform: uppercase; }
+  .imp__prod, .imp__item { display: flex; align-items: flex-start; gap: 1.5mm; padding: .8mm 0; }
+  .imp__qtd { min-width: 6mm; font-size: 1.15em; font-weight: 800; }
+  .imp__nome { font-weight: 700; }
+  .imp__nome small { display: block; font-size: .85em; font-weight: 400; }
+  .imp__caixa { flex: none; width: 3.2mm; height: 3.2mm; margin-top: .6mm; border: 1.5px solid #000; }
+  .imp__pedido { padding: 2mm 0; border-top: 1.5px dashed #000; break-inside: avoid; }
+  .imp__titulo + .imp__pedido { border-top: 0; }
+  .imp__pessoa { font-size: 1.1em; font-weight: 800; }
+  .imp__total { display: flex; justify-content: space-between; margin-top: 1mm; padding-top: 1mm; border-top: 1px solid #000; }
+  .imp__obs { margin-top: 1mm; font-size: .9em; }
+  .imp__peso { display: flex; align-items: flex-end; gap: 1.5mm; margin: .5mm 0 1mm 4.7mm; font-size: .9em; }
+  .imp__risco { flex: 1; min-width: 12mm; max-width: 30mm; height: 1.1em; border-bottom: 1px solid #000; }
+  .imp__fim { display: flex; justify-content: space-between; margin-top: 2mm; padding-top: 2mm; border-top: 2px solid #000; font-weight: 800; }
+}
+
 /* Efeitos de passar o mouse: só em aparelhos com mouse (no toque eles "grudam") */
 @media (hover: hover) {
   .chip:hover { border-color: var(--ouro); }
@@ -875,4 +989,5 @@ h1, h2, h3, p { margin: 0; }
   .alternar:not([aria-pressed="true"]):hover { border-color: var(--tinta-2); }
   .ticket__cancelar:hover { color: var(--erro); }
   .ticket__cobrar:hover { background: #7a1a18; }
+  .peso__salvar:not(:disabled):hover { background: #7a1a18; }
 }

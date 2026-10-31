@@ -10,7 +10,7 @@ Site de pedidos e painel de tickets para os pedidos coletivos DuJOÃO, A Casa do
 1. A pessoa abre o link, escolhe os produtos com **+** e **−**, confere o pedido e confirma com nome e e-mail.
 2. O pedido é gravado na sua **Planilha Google** (abas Pedidos e Itens). Os preços são conferidos pela aba Produtos: se um preço mudou, o site avisa e mostra o valor novo antes de confirmar.
 3. A pessoa recebe um e-mail de confirmação com os itens, o total e o PIX. Você recebe um aviso a cada pedido.
-4. No **painel**, cada pedido vira um ticket: você marca **Pago**, **Entregue** ou cancela. A aba **Resumo** junta tudo por produto, pronto para copiar e mandar no WhatsApp.
+4. No **painel**, cada pedido vira um ticket: você marca **Pago**, **Entregue** ou cancela. A aba **Resumo** junta tudo por produto, pronto para copiar e mandar no WhatsApp ou imprimir. A aba **Produtos** muda preços e o que está à venda.
 
 Enquanto a planilha não estiver ligada, o site continua funcionando: o botão vira "Enviar pedido pelo WhatsApp".
 
@@ -50,6 +50,8 @@ Em 1 ou 2 minutos o site fica no ar no endereço acima.
 - **Compartilhar:** mande o link do site no grupo. A prévia no WhatsApp mostra o logo.
 - **Controlar:** a lista *Em aberto* mostra só o que falta pagar ou entregar. Quando um ticket fica **Pago** e **Entregue**, ele vai para *Concluídos*. *Todos* mostra a rodada inteira. Toque no telefone do ticket para falar com a pessoa no WhatsApp.
 - **Pedir ao DuJOÃO:** aba **Resumo → Copiar resumo para o WhatsApp**.
+- **Imprimir para separar:** aba **Resumo → Imprimir para separar**. Escolha o papel (**Térmica 80 mm**, **Térmica 58 mm** ou **A4**) e o que sai: o total de cada produto para separar e/ou um bloco por pessoa, com caixinhas para ir marcando. Na janela de impressão, escolha a impressora térmica, margens **Nenhuma** e escala **100%**. O painel lembra a sua escolha de papel.
+- **Itens por quilo (joelho):** no ticket aparece o campo **Peso**. Digite o peso da balança em quilos (`1,250`) ou em gramas (`1250`) e saia do campo: o valor é calculado pelo preço do kg, somado no total do pedido e já entra na mensagem de cobrança e no resumo. Se o pedido tem 2 peças, digite o peso das duas juntas. Apagar o peso volta o item para "a pesar". Na impressão, item ainda sem peso sai com uma linha para anotar.
 - **Cobrar:** aba **Resumo → Copiar valores**. Quem já pagou aparece com "(pago)", e quem pagou só parte aparece com quanto falta.
 - **Fechar para novos pedidos:** desligue *Recebendo pedidos* no Resumo.
 - **Aviso no topo do site:** por exemplo "Pedidos até quinta". Fica no Resumo.
@@ -60,12 +62,14 @@ Pessoas com o mesmo nome e e-mails diferentes aparecem separadas no resumo, com 
 
 ## Mudar preços e produtos
 
-Tudo pela aba **Produtos** da planilha:
+**Pelo painel (celular ou computador):** aba **Produtos**. Mude o preço ou desligue o que acabou e toque em **Salvar**. O site passa a usar os valores novos na hora. Pedidos que já foram feitos continuam com o preço da época.
+
+**Pela planilha**, na aba **Produtos** (também serve para produto novo):
 
 - **Preço:** mude a coluna *Preço (R$)*.
 - **Esgotou:** desmarque *Disponível*. O produto aparece como esgotado no site.
 - **Produto novo:** adicione uma linha com um *ID* novo (sem espaços, por exemplo `linguica-cheddar`). Use uma *Categoria* que já existe para ele entrar na mesma seção.
-- **Por quilo:** escreva `kg` em *Unidade*. O site mostra "pelo peso" e não soma no total.
+- **Por quilo:** escreva `kg` em *Unidade*. O site mostra "pelo peso" e não soma no total. Depois de pesar, digite o peso no ticket do painel (veja *No dia a dia*).
 
 O site lê a aba Produtos toda vez que alguém abre a página. As fotos ficam em `assets/img` e são ligadas pelo ID em `assets/catalogo.js`.
 
@@ -76,9 +80,13 @@ Pode inserir colunas novas nas abas e mudar a ordem delas. Só não renomeie os 
 A senha não fica no código. Para trocar: **DuJOÃO → Definir senha do painel**. Isso desconecta o painel de todos os aparelhos.
 Depois de 8 senhas erradas seguidas, o painel bloqueia novas tentativas por 10 minutos.
 
-## Se mudar o código do script
+## Atualizar o script (quando o código mudar aqui no GitHub)
 
-Depois de editar no Apps Script: **Implantar → Gerenciar implantações** → lápis → *Versão*: **Nova versão** → **Implantar**. A URL continua a mesma.
+1. Abra `apps-script/Codigo.gs` aqui no GitHub → botão **Raw** → selecione tudo e copie.
+2. Na planilha: **Extensões → Apps Script**. Apague o código antigo, cole o novo e clique no disquete.
+3. **Implantar → Gerenciar implantações** → lápis → *Versão*: **Nova versão** → **Implantar**. A URL continua a mesma, não precisa mexer no `config.js`.
+
+A coluna nova *Peso (kg)* aparece sozinha na aba Itens no primeiro uso.
 
 ## Limites
 

@@ -22,6 +22,7 @@
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-copiar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.2A1.7 1.7 0 0 0 13.8 4.5H6.2A1.7 1.7 0 0 0 4.5 6.2v7.6a1.7 1.7 0 0 0 1.7 1.7h2.3"/></g></symbol>
     <symbol id="i-conversa" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0-7.4 12.7L3.5 20.5l4.4-1.1A8.5 8.5 0 1 0 12 3.5Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></symbol>
+    <symbol id="i-imprimir" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M7 8V3.5h10V8"/><rect x="3.5" y="8" width="17" height="8.5" rx="2"/><path d="M7 13.5h10v7H7z"/></g></symbol>
     <symbol id="i-busca" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g></symbol>
   </svg>
 
@@ -56,6 +57,7 @@
         <div class="abas" role="tablist" aria-label="Seções do painel">
           <button class="aba" role="tab" id="aba-tickets" aria-controls="painel-tickets" aria-selected="true" type="button">Tickets <span class="aba__n" id="n-tickets">0</span></button>
           <button class="aba" role="tab" id="aba-resumo" aria-controls="painel-resumo" aria-selected="false" type="button" tabindex="-1">Resumo</button>
+          <button class="aba" role="tab" id="aba-produtos" aria-controls="painel-produtos" aria-selected="false" type="button" tabindex="-1">Produtos</button>
         </div>
       </div>
     </header>
@@ -107,6 +109,27 @@
 
             <article class="cartao papel serrilha">
               <div class="cartao__cabeca">
+                <h2 class="cartao__titulo">Imprimir para separar</h2>
+                <p class="cartao__sub">A lista dos produtos para pegar e os pedidos de cada pessoa, da rodada que está na tela.</p>
+              </div>
+              <fieldset class="opcoes">
+                <legend class="ajuste__nome">Papel</legend>
+                <div class="segmentos">
+                  <label><input type="radio" name="papel" value="80" checked><span>Térmica 80 mm</span></label>
+                  <label><input type="radio" name="papel" value="58"><span>Térmica 58 mm</span></label>
+                  <label><input type="radio" name="papel" value="a4"><span>Folha A4</span></label>
+                </div>
+              </fieldset>
+              <fieldset class="opcoes">
+                <legend class="ajuste__nome">O que imprimir</legend>
+                <label class="lembrar"><input type="checkbox" id="imp-separar" checked> Lista para separar (por produto)</label>
+                <label class="lembrar"><input type="checkbox" id="imp-pessoas" checked> Pedidos por pessoa</label>
+              </fieldset>
+              <button class="btn btn--primario btn--largo" type="button" id="imprimir"><svg aria-hidden="true"><use href="#i-imprimir"/></svg>Imprimir</button>
+            </article>
+
+            <article class="cartao papel serrilha">
+              <div class="cartao__cabeca">
                 <h2 class="cartao__titulo">Site e rodada</h2>
               </div>
               <div class="ajuste">
@@ -134,8 +157,25 @@
           </div>
         </div>
       </section>
+
+      <section id="painel-produtos" role="tabpanel" aria-labelledby="aba-produtos" hidden>
+        <article class="cartao papel serrilha cartao--produtos">
+          <div class="cartao__cabeca">
+            <h2 class="cartao__titulo">Preços e produtos</h2>
+            <p class="cartao__sub">Mude o preço ou desligue o que acabou e toque em Salvar. Os pedidos novos já usam os valores salvos.</p>
+          </div>
+          <div id="produtos-lista"></div>
+        </article>
+        <div class="produtos__barra" id="produtos-barra" hidden>
+          <span class="produtos__mudancas" id="produtos-mudancas"></span>
+          <button class="btn btn--texto" type="button" id="produtos-desfazer">Desfazer</button>
+          <button class="btn btn--ouro" type="button" id="produtos-salvar">Salvar</button>
+        </div>
+      </section>
     </main>
   </div>
+
+  <div class="impressao" id="impressao" aria-hidden="true"></div>
 
   <dialog class="dialogo papel" id="dialogo" aria-labelledby="dialogo-titulo" aria-describedby="dialogo-texto">
     <form method="dialog">

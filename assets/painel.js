@@ -50,7 +50,9 @@
   function capitaliza(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
   /** "Torresmo 180 g" vira "Torresmo - 180g/cada"; sem peso no nome fica só o nome. */
   function linhaItem(i) {
-    if (i.subtotal === null) return '• *' + i.qtd + '* ' + i.nome + ' - pelo peso';
+    if (i.unidade === 'kg' || i.subtotal === null) {
+      return '• *' + i.qtd + '* ' + i.nome + ' - ' + (i.peso && i.subtotal !== null ? kgTexto(gramasSalvas(i)) + ' (' + dinheiro(i.subtotal) + ')' : 'pelo peso');
+    }
     var m = String(i.nome).match(/^(.*\S)\s+(\d+(?:[.,]\d+)?)\s*(g|kg)$/i);
     return '• *' + i.qtd + '* ' + (m ? m[1] + ' - ' + m[2] + m[3].toLowerCase() + '/cada' : i.nome);
   }
@@ -71,6 +73,180 @@
     return l.join('\n');
   }
   function nbsp(s) { return String(s).replace(/ (\d)/g, ' $1'); }
+
+  /* ---------- peso dos itens vendidos por quilo ---------- */
+  /** "1,250", "1.25" ou "1,25 kg" = 1250 g; "800" ou "800 g" = 800 g. Vazio = null; inválido = NaN. */
+  function gramasDe(texto) {
+    var s = String(texto || '').toLowerCase().replace(/\s+/g, '');
+    if (!s) return null;
+    var emGramas = /\dg$/.test(s);
+    s = s.replace(/kg$|g$/, '').replace(',', '.');
+    if (!/^(\d+(\.\d*)?|\.\d+)$/.test(s)) return NaN;
+    var n = Number(s);
+    var g = emGramas || (s.indexOf('.') < 0 && n >= 100) ? Math.round(n) : Math.round(n * 1000);
+    return g >= 1 && g < 100000 ? g : NaN;
+  }
+  function kgCampo(g) { return (g / 1000).toFixed(3).replace('.', ','); }
+  function kgTexto(g) { return kgCampo(g) + '\u00a0kg'; }
+  /** "Torresmo 180 g": o número fica junto da unidade na quebra de linha. */
+  function nomeHTML(n) { return esc(String(n || '').replace(/(\d) (g|kg|un)\b/g, '$1\u00a0$2')); }
+  /** Mesma conta da planilha: preço do kg x peso, arredondado no centavo. */
+  function valorPeso(precoKg, g) { return Math.round(precoKg * g / 1000); }
+  function gramasSalvas(i) { return i.peso ? Math.round(i.peso * 1000) : null; }
+  function cssId(s) { return window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, '\\$&'); }
+
+  var pesosEdicao = {}; // "numero|id" -> { texto, gramas, enviando, reenviar, erro } enquanto não está salvo
+  function chavePeso(numero, id) { return numero + '|' + id; }
+  function acharPedido(numero) {
+    return estado.dados ? estado.dados.pedidos.filter(function (x) { return x.numero === numero; })[0] : null;
+  }
+  function itemDo(p, id) { return p ? p.itens.filter(function (x) { return x.id === id; })[0] : null; }
+
+  /** O pedido como aparece na tela: com o peso que você acabou de digitar, mesmo antes de salvar. */
+  function pedidoEfetivo(p) {
+    var delta = 0;
+    var mudou = false;
+    var itens = p.itens.map(function (i) {
+      var ed = i.unidade === 'kg' ? pesosEdicao[chavePeso(p.numero, i.id)] : null;
+      if (!ed || (ed.gramas !== null && isNaN(ed.gramas))) return i;
+      var sub = ed.gramas === null ? null : valorPeso(i.preco, ed.gramas);
+      delta += (sub || 0) - (i.subtotal || 0);
+      mudou = true;
+      return Object.assign({}, i, { peso: ed.gramas === null ? null : ed.gramas / 1000, subtotal: sub });
+    });
+    return mudou ? Object.assign({}, p, { itens: itens, total: Math.max(0, p.total + delta) }) : p;
+  }
+  function estadoPeso(i, ed) {
+    if (!ed) { var g = gramasSalvas(i); return { gr: g, modo: g === null ? 'falta' : 'ok' }; }
+    if (ed.gramas !== null && isNaN(ed.gramas)) return { gr: NaN, modo: 'invalido' };
+    if (ed.enviando !== undefined && ed.gramas === ed.enviando) return { gr: ed.gramas, modo: 'salvando' };
+    return { gr: ed.gramas, modo: ed.erro ? 'erro' : 'pendente' };
+  }
+  function classePeso(est) {
+    return est.modo === 'invalido' || est.modo === 'erro' ? ' peso--erro' : (est.gr === null ? ' peso--falta' : '');
+  }
+  function textoPeso(i, est) {
+    if (est.modo === 'invalido') return 'Confira o peso. Exemplo: 1,250';
+    if (est.gr === null) return i.qtd > 1 ? 'Digite o peso total das ' + i.qtd + ' peças.' : 'Digite o peso para somar no total.';
+    return '<span class="nw">' + kgTexto(est.gr) + '</span> × <span class="nw">' + dinheiro(i.preco) + '</span> = <b class="nw">' + dinheiro(valorPeso(i.preco, est.gr)) + '</b>' +
+      (est.modo === 'erro' ? ' <span class="peso__falhou">Não salvou.</span>' : '');
+  }
+  var ROTULO_SALVAR = { pendente: 'Salvar', salvando: 'Salvando…', erro: 'Tentar de novo' };
+  function pesoHTML(p, i) {
+    var ed = pesosEdicao[chavePeso(p.numero, i.id)];
+    var est = estadoPeso(i, ed);
+    var valor = ed ? ed.texto : (i.peso ? kgCampo(gramasSalvas(i)) : '');
+    var idCalc = 'pc-' + p.numero + '-' + String(i.id).replace(/[^\w-]/g, '');
+    var rotulo = ROTULO_SALVAR[est.modo];
+    return '<div class="peso' + classePeso(est) + '">' +
+      '<label class="peso__campo"><span class="peso__rotulo" aria-hidden="true">Peso</span>' +
+        '<input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0,000" data-campo="peso" value="' + esc(valor) + '"' +
+        ' aria-label="' + esc('Peso de ' + i.nome + ' em quilos, pedido nº ' + p.numero) + '" aria-describedby="' + idCalc + '"' +
+        (est.modo === 'invalido' ? ' aria-invalid="true"' : '') + '>' +
+        '<span class="peso__un" aria-hidden="true">kg</span></label>' +
+      '<button type="button" class="peso__salvar"' + (rotulo ? '' : ' hidden') + (est.modo === 'salvando' ? ' disabled' : '') + '>' + (rotulo || 'Salvar') + '</button>' +
+      '<p class="peso__calc" id="' + idCalc + '">' + textoPeso(i, est) + '</p>' +
+    '</div>';
+  }
+  function valorItemHTML(i) {
+    if (i.subtotal !== null) return dinheiro(i.subtotal);
+    return i.unidade === 'kg' ? '<span class="ticket__pesar">a pesar</span>' : 'pelo peso';
+  }
+  function totalHTML(pe) {
+    return dinheiro(pe.total) + (pe.itens.some(function (i) { return i.subtotal === null; }) ? ' <small>+ peso</small>' : '');
+  }
+  function hrefCobranca(pe) {
+    var fone = nacional(pe.whatsapp);
+    return 'https://wa.me/' + (fone ? '55' + fone : '') + '?text=' + encodeURIComponent(textoCobranca(pe));
+  }
+
+  /** Atualiza só o necessário no ticket, sem redesenhar o campo em que você está digitando. */
+  function atualizarPeso(numero, id) {
+    var t = document.querySelector('.ticket[data-numero="' + numero + '"]');
+    var p = acharPedido(numero);
+    var item = itemDo(p, id);
+    if (!t || !item) return;
+    var pe = pedidoEfetivo(p);
+    var li = t.querySelector('.ticket__item[data-id="' + cssId(id) + '"]');
+    if (li) {
+      li.querySelector('.ticket__valor').innerHTML = valorItemHTML(itemDo(pe, id));
+      var bloco = li.querySelector('.peso');
+      if (bloco) {
+        var ed = pesosEdicao[chavePeso(numero, id)];
+        var est = estadoPeso(item, ed);
+        bloco.className = 'peso' + classePeso(est);
+        bloco.querySelector('.peso__calc').innerHTML = textoPeso(item, est);
+        var b = bloco.querySelector('.peso__salvar');
+        var rotulo = ROTULO_SALVAR[est.modo];
+        b.hidden = !rotulo;
+        b.disabled = est.modo === 'salvando';
+        if (rotulo) b.textContent = rotulo;
+        var campo = bloco.querySelector('input');
+        if (est.modo === 'invalido') campo.setAttribute('aria-invalid', 'true'); else campo.removeAttribute('aria-invalid');
+        if (document.activeElement !== campo) campo.value = ed ? ed.texto : (item.peso ? kgCampo(gramasSalvas(item)) : '');
+      }
+    }
+    t.querySelector('.ticket__total strong').innerHTML = totalHTML(pe);
+    var cob = t.querySelector('.ticket__cobrar');
+    if (cob) cob.href = hrefCobranca(pe);
+  }
+
+  function salvarPeso(numero, id) {
+    var chave = chavePeso(numero, id);
+    var ed = pesosEdicao[chave];
+    var item = itemDo(acharPedido(numero), id);
+    if (!ed || !item || (ed.gramas !== null && isNaN(ed.gramas))) return;
+    // já tem uma gravação deste item a caminho: manda o valor novo quando ela terminar
+    if (ed.enviando !== undefined) { if (ed.gramas !== ed.enviando) ed.reenviar = true; return; }
+    if (ed.gramas === gramasSalvas(item)) { delete pesosEdicao[chave]; atualizarPeso(numero, id); return; }
+    var enviado = ed.gramas;
+    ed.enviando = enviado;
+    ed.erro = false;
+    atualizarPeso(numero, id);
+    estado.mutacao++;
+    chamarPainel({ acao: 'peso', numero: numero, id: id, peso: enviado === null ? null : enviado / 1000 }).then(function (r) {
+      if (!r || !r.ok) {
+        if (r && r.codigo === 'acao') throw new Error('Para salvar o peso pelo painel, atualize o script da planilha (passo a passo no LEIAME).');
+        throw new Error((r && r.erro) || 'Não foi possível salvar o peso.');
+      }
+      var p = acharPedido(numero);
+      if (p && r.pedido) { p.itens = r.pedido.itens; p.total = r.pedido.total; }
+      var atual = pesosEdicao[chave];
+      var repetir = false;
+      if (atual) {
+        atual.enviando = undefined;
+        if (atual.gramas === enviado) delete pesosEdicao[chave];
+        else { repetir = !!atual.reenviar; atual.reenviar = false; }
+      }
+      atualizarPeso(numero, id);
+      avisar(enviado === null ? 'Peso apagado no pedido nº ' + numero + '.' : 'Peso salvo no pedido nº ' + numero + ': ' + kgTexto(enviado) + '.');
+      if (repetir) salvarPeso(numero, id); else recarregarDepois();
+    }).catch(function (err) {
+      var atual = pesosEdicao[chave];
+      if (atual) { atual.enviando = undefined; atual.reenviar = false; atual.erro = true; }
+      atualizarPeso(numero, id);
+      if (err && err.silencioso) return;
+      avisar(err && !err.codigo && err.message ? err.message : 'Não foi possível salvar o peso. Confira a internet e tente de novo.', 6000);
+    });
+  }
+  function onde(el) {
+    var t = el.closest('.ticket');
+    var li = el.closest('.ticket__item');
+    return t && li ? { numero: t.getAttribute('data-numero'), id: li.getAttribute('data-id') } : null;
+  }
+  function focoPeso() {
+    var a = document.activeElement;
+    if (!a || !a.getAttribute || a.getAttribute('data-campo') !== 'peso') return null;
+    var o = onde(a);
+    if (o) { o.ini = a.selectionStart; o.fim = a.selectionEnd; }
+    return o;
+  }
+  function voltarFocoPeso(f) {
+    var el = document.querySelector('.ticket[data-numero="' + f.numero + '"] .ticket__item[data-id="' + cssId(f.id) + '"] input[data-campo="peso"]');
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    try { el.setSelectionRange(f.ini, f.fim); } catch (e) { /* sem seleção */ }
+  }
 
   function lerToken() {
     try { return localStorage.getItem(K_TOKEN) || sessionStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; }
@@ -267,7 +443,7 @@
     var info = {};
     var a = document.activeElement;
     var t = a && a.closest ? a.closest('.ticket') : null;
-    if (t) info.foco = { numero: t.getAttribute('data-numero'), campo: a.getAttribute('data-campo') || (a.classList.contains('ticket__cancelar') ? 'cancelado' : null) };
+    if (t && a.getAttribute('data-campo') !== 'peso') info.foco = { numero: t.getAttribute('data-numero'), campo: a.getAttribute('data-campo') || (a.classList.contains('ticket__cancelar') ? 'cancelado' : null) };
     var f = a && a.closest ? a.closest('[data-filtro]') : null;
     if (f) info.filtro = f.getAttribute('data-filtro');
     if (!$('painel-tickets').hidden) {
@@ -290,8 +466,9 @@
     var info = lembrarTela();
     renderTopo();
     renderFiltros();
-    renderTickets();
+    if (!(silencioso && focoPeso())) renderTickets();
     renderResumo();
+    renderProdutos(false);
     if (silencioso) restaurarTela(info);
   }
 
@@ -326,10 +503,13 @@
 
   function ticketHTML(p) {
     var concluido = p.pago && p.entregue && !p.cancelado;
-    var temPeso = p.itens.some(function (i) { return i.subtotal === null; });
-    var itens = p.itens.map(function (i) {
-      return '<li class="ticket__item"><span class="ticket__q">' + i.qtd + '</span><span class="ticket__produto">' + esc(i.nome) + '</span>' +
-        '<span class="ticket__valor">' + (i.subtotal === null ? 'pelo peso' : dinheiro(i.subtotal)) + '</span></li>';
+    var pe = pedidoEfetivo(p);
+    var itens = pe.itens.map(function (i, k) {
+      var kg = i.unidade === 'kg';
+      return '<li class="ticket__item' + (kg ? ' ticket__item--kg' : '') + '" data-id="' + esc(i.id) + '"><span class="ticket__q">' + i.qtd + '</span>' +
+        '<span class="ticket__produto">' + nomeHTML(i.nome) + (kg ? '<small>' + dinheiro(i.preco) + ' o kg</small>' : '') + '</span>' +
+        '<span class="ticket__valor">' + valorItemHTML(i) + '</span>' +
+        (kg && !p.cancelado ? pesoHTML(p, p.itens[k]) : '') + '</li>';
     }).join('');
     var contato = [];
     var fone = nacional(p.whatsapp);
@@ -358,7 +538,7 @@
       (contato.length ? '<div class="ticket__contato">' + contato.join('') + '</div>' : '') +
       avisoEmail +
       '<ul class="ticket__itens">' + itens + '</ul>' +
-      '<div class="ticket__total"><span>Total</span><strong>' + dinheiro(p.total) + (temPeso ? ' <small>+ peso</small>' : '') + '</strong></div>' +
+      '<div class="ticket__total"><span>Total</span><strong>' + totalHTML(pe) + '</strong></div>' +
       (p.obs ? '<p class="ticket__obs"><strong>Obs.:</strong> ' + esc(p.obs) + '</p>' : '') +
       (p.cancelado ? '' :
         '<div class="ticket__acoes">' +
@@ -366,7 +546,7 @@
           botaoAlternar(p, 'entregue', 'Entregue', rotuloNum) +
         '</div>') +
       (!p.pago && !p.cancelado
-        ? '<a class="ticket__cobrar" href="https://wa.me/' + (fone ? '55' + fone : '') + '?text=' + encodeURIComponent(textoCobranca(p)) + '" target="_blank" rel="noopener">' +
+        ? '<a class="ticket__cobrar" href="' + esc(hrefCobranca(pe)) + '" target="_blank" rel="noopener">' +
           '<svg aria-hidden="true"><use href="#i-conversa"/></svg>Cobrar no WhatsApp<span class="sr-only"> (pedido ' + rotuloNum + ')</span></a>'
         : '') +
       '<button type="button" class="ticket__cancelar" data-acao="cancelar">' + (p.cancelado ? 'Reativar pedido' : 'Cancelar pedido') + '<span class="sr-only"> ' + rotuloNum + '</span></button>' +
@@ -387,7 +567,9 @@
       .filter(filtro.teste)
       .filter(function (p) { return combinaBusca(p, termo); })
       .sort(function (a, b) { return Number(b.numero) - Number(a.numero); });
+    var foco = focoPeso();
     $('tickets').innerHTML = lista.map(ticketHTML).join('');
+    if (foco) voltarFocoPeso(foco);
     var vazio = $('tickets-vazio');
     if (lista.length) { vazio.hidden = true; return; }
     vazio.hidden = false;
@@ -426,11 +608,14 @@
           cat = p.categoria;
           html += '<h3 class="cat-titulo">' + esc(cat) + '</h3><ul class="lista-prod">';
         }
-        html += '<li><span class="lp__nome">' + esc(p.nome) + (p.temPeso ? ' <small>(pelo peso)</small>' : '') + '</span>' +
+        var peso = [];
+        if (p.gramas) peso.push(kgTexto(p.gramas));
+        if (p.temPeso) peso.push('a pesar');
+        html += '<li><span class="lp__nome">' + esc(p.nome) + (peso.length ? ' <small>(' + peso.join(' + ') + ')</small>' : '') + '</span>' +
           '<span class="lp__qtd">' + p.qtd + '</span>' +
           '<span class="lp__quem">' + esc(p.quem.map(function (q) { return q.qtd + ' ' + q.nome; }).join(', ')) + '</span></li>';
       });
-      html += '</ul><div class="lista-prod__total"><span>Total</span><strong>' + plural(r.itens, 'item', 'itens') + ', ' + dinheiro(r.total) + '</strong></div>';
+      html += '</ul><div class="lista-prod__total"><span>Total</span><strong>' + plural(r.itens, 'item', 'itens') + ', ' + dinheiro(r.total) + (r.temPeso ? ' + peso' : '') + '</strong></div>';
       $('lista-produtos').innerHTML = html;
     }
     $('copiar-produtos').disabled = !r.produtos.length;
@@ -501,14 +686,220 @@
     if (alvo) alvo.focus({ preventScroll: true });
   }
 
+  /* ---------- produtos e preços ---------- */
+  var edicao = {}; // id -> { preco: centavos | NaN, disponivel: bool }
+  function centavosDe(texto) {
+    var s = String(texto || '').replace(/[R$\s]/g, '');
+    if (!s) return NaN;
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+    var n = Number(s);
+    return isFinite(n) && n >= 0 && n <= 100000 ? Math.round(n * 100) : NaN;
+  }
+  function precoTexto(c) { return (c / 100).toFixed(2).replace('.', ','); }
+  function original(id) {
+    var lista = (estado.dados && estado.dados.catalogo) || [];
+    for (var i = 0; i < lista.length; i++) if (lista[i].id === id) return lista[i];
+    return null;
+  }
+  function mudancasProdutos() {
+    var lista = [];
+    Object.keys(edicao).forEach(function (id) {
+      var o = original(id);
+      var e = edicao[id];
+      if (!o) return;
+      var m = { id: id };
+      var mudou = false;
+      if (e.preco !== undefined && e.preco !== Math.round(o.preco * 100)) { m.preco = e.preco / 100; mudou = true; }
+      if (e.disponivel !== undefined && e.disponivel !== o.disponivel) { m.disponivel = e.disponivel; mudou = true; }
+      if (mudou) lista.push(m);
+    });
+    return lista;
+  }
+  function atualizarBarraProdutos() {
+    var invalidos = Object.keys(edicao).some(function (id) { return edicao[id].preco !== undefined && isNaN(edicao[id].preco); });
+    var n = mudancasProdutos().length;
+    $('produtos-barra').hidden = !n && !invalidos;
+    $('produtos-mudancas').textContent = invalidos ? 'Confira o preço marcado em vermelho' : plural(n, 'alteração', 'alterações');
+    $('produtos-salvar').disabled = invalidos || !n;
+  }
+  function renderProdutos(forcar) {
+    var caixa = $('produtos-lista');
+    var cat = estado.dados && estado.dados.catalogo;
+    if (!cat) {
+      caixa.innerHTML = '<p class="cartao__vazio">Para mudar os preços por aqui, atualize o script da planilha (passo a passo no LEIAME). Enquanto isso, dá para mudar na aba Produtos da planilha.</p>';
+      return;
+    }
+    // não apaga o que você está digitando quando os dados atualizam sozinhos
+    if (!forcar && (mudancasProdutos().length || caixa.contains(document.activeElement))) return;
+    var html = '';
+    var atual = null;
+    cat.forEach(function (p) {
+      if (p.categoria !== atual) {
+        if (atual !== null) html += '</ul>';
+        atual = p.categoria;
+        html += '<h3 class="cat-titulo">' + esc(atual) + '</h3><ul class="produtos">';
+      }
+      var e = edicao[p.id] || {};
+      var preco = e.preco !== undefined ? (isNaN(e.preco) ? (e.texto || '') : precoTexto(e.preco)) : precoTexto(Math.round(p.preco * 100));
+      var disp = e.disponivel !== undefined ? e.disponivel : p.disponivel;
+      var mudou = (e.preco !== undefined && e.preco !== Math.round(p.preco * 100)) || (e.disponivel !== undefined && e.disponivel !== p.disponivel);
+      html += '<li class="produto' + (mudou ? ' produto--mudou' : '') + (disp ? '' : ' produto--esgotado') + '" data-id="' + esc(p.id) + '">' +
+        '<div class="produto__info"><p class="produto__nome">' + nomeHTML(p.nome) + '</p>' +
+          '<p class="produto__estado">' + (disp ? 'À venda' : 'Esgotado') + '</p></div>' +
+        '<label class="produto__preco' + (e.preco !== undefined && isNaN(e.preco) ? ' produto__preco--erro' : '') + '">' +
+          '<span class="sr-only">Preço de ' + esc(p.nome) + '</span><span aria-hidden="true">R$</span>' +
+          '<input type="text" inputmode="decimal" autocomplete="off" value="' + esc(preco) + '" data-campo="preco">' +
+          (p.unidade === 'kg' ? '<span class="produto__un" aria-hidden="true">/kg</span>' : '') +
+        '</label>' +
+        '<button type="button" class="interruptor" role="switch" aria-checked="' + disp + '" data-campo="disponivel" aria-label="' + esc(p.nome) + ' à venda"><span></span></button>' +
+        '</li>';
+    });
+    caixa.innerHTML = html + '</ul>';
+    atualizarBarraProdutos();
+  }
+  function marcarLinha(li) {
+    var id = li.getAttribute('data-id');
+    var o = original(id);
+    var e = edicao[id] || {};
+    var mudou = o && ((e.preco !== undefined && e.preco !== Math.round(o.preco * 100)) || (e.disponivel !== undefined && e.disponivel !== o.disponivel));
+    li.classList.toggle('produto--mudou', !!mudou);
+    var disp = e.disponivel !== undefined ? e.disponivel : (o && o.disponivel);
+    li.classList.toggle('produto--esgotado', !disp);
+    li.querySelector('.produto__estado').textContent = disp ? 'À venda' : 'Esgotado';
+  }
+  function ligarProdutos() {
+    var caixa = $('produtos-lista');
+    caixa.addEventListener('input', function (e) {
+      if (e.target.getAttribute('data-campo') !== 'preco') return;
+      var li = e.target.closest('.produto');
+      var id = li.getAttribute('data-id');
+      var c = centavosDe(e.target.value);
+      edicao[id] = Object.assign(edicao[id] || {}, { preco: c, texto: e.target.value });
+      li.querySelector('.produto__preco').classList.toggle('produto__preco--erro', isNaN(c));
+      marcarLinha(li);
+      atualizarBarraProdutos();
+    });
+    caixa.addEventListener('blur', function (e) {
+      if (e.target.getAttribute('data-campo') !== 'preco') return;
+      var id = e.target.closest('.produto').getAttribute('data-id');
+      if (edicao[id] && !isNaN(edicao[id].preco)) e.target.value = precoTexto(edicao[id].preco);
+    }, true);
+    caixa.addEventListener('click', function (e) {
+      var sw = e.target.closest('[data-campo="disponivel"]');
+      if (!sw) return;
+      var li = sw.closest('.produto');
+      var id = li.getAttribute('data-id');
+      var novo = sw.getAttribute('aria-checked') !== 'true';
+      sw.setAttribute('aria-checked', String(novo));
+      edicao[id] = Object.assign(edicao[id] || {}, { disponivel: novo });
+      marcarLinha(li);
+      atualizarBarraProdutos();
+    });
+    $('produtos-desfazer').addEventListener('click', function () {
+      edicao = {};
+      renderProdutos(true);
+      atualizarBarraProdutos();
+    });
+    $('produtos-salvar').addEventListener('click', function () {
+      var lista = mudancasProdutos();
+      if (!lista.length) return;
+      var botao = $('produtos-salvar');
+      botao.disabled = true;
+      botao.textContent = 'Salvando…';
+      estado.mutacao++;
+      chamarPainel({ acao: 'salvarProdutos', produtos: lista }).then(function (r) {
+        if (!r || !r.ok) {
+          if (r && r.codigo === 'acao') throw new Error('Atualize o script da planilha para salvar preços pelo painel (passo a passo no LEIAME).');
+          throw new Error((r && r.erro) || 'Não foi possível salvar.');
+        }
+        estado.dados.catalogo = r.catalogo;
+        edicao = {};
+        renderProdutos(true);
+        avisar(lista.length === 1 ? 'Alteração salva. O site já usa o valor novo.' : 'Alterações salvas. O site já usa os valores novos.');
+      }).catch(function (err) {
+        if (err && err.silencioso) return;
+        avisar(err && err.message ? err.message : 'Não foi possível salvar. Tente de novo.', 6000);
+      }).finally(function () {
+        botao.textContent = 'Salvar';
+        atualizarBarraProdutos();
+      });
+    });
+  }
+
+  /* ---------- impressão (térmica 80/58 mm ou A4) ---------- */
+  var K_IMPRESSAO = 'dujoao.painel.impressao';
+  function opcoesImpressao() {
+    var papel = document.querySelector('input[name="papel"]:checked');
+    return { papel: papel ? papel.value : '80', separar: $('imp-separar').checked, pessoas: $('imp-pessoas').checked };
+  }
+  function montarImpressao(op) {
+    var d = estado.dados;
+    var r = d.resumo;
+    var ativos = d.pedidos.filter(function (p) { return !p.cancelado; })
+      .sort(function (a, b) { return Number(a.numero) - Number(b.numero); });
+    var agora = new Date();
+    var dois = function (n) { return String(n).padStart(2, '0'); };
+    var quando = dois(agora.getDate()) + '/' + dois(agora.getMonth() + 1) + '/' + agora.getFullYear() + ' ' + dois(agora.getHours()) + ':' + dois(agora.getMinutes());
+    var h = '<div class="imp__cab"><p class="imp__marca">DuJOÃO</p><p>Pedido da rodada ' + d.rodada + '</p><p>' + quando + '</p></div>';
+    if (op.separar) {
+      h += '<h2 class="imp__titulo">Separar: ' + plural(r.itens, 'item', 'itens') + '</h2>';
+      var cat = null;
+      r.produtos.forEach(function (p) {
+        if (p.categoria !== cat) { cat = p.categoria; h += '<p class="imp__cat">' + esc(cat) + '</p>'; }
+        h += '<div class="imp__prod"><span class="imp__caixa"></span><span class="imp__qtd">' + p.qtd + '</span>' +
+          '<span class="imp__nome">' + nomeHTML(p.nome) + (p.gramas ? ' (' + kgTexto(p.gramas) + (p.temPeso ? ' + pesar' : '') + ')' : (p.temPeso ? ' (pesar)' : '')) +
+          '<small>' + esc(p.quem.map(function (q) { return q.qtd + ' ' + q.nome; }).join(', ')) + '</small></span></div>';
+      });
+    }
+    if (op.pessoas) {
+      h += '<h2 class="imp__titulo">Por pessoa: ' + plural(ativos.length, 'pedido', 'pedidos') + '</h2>';
+      ativos.forEach(function (p) {
+        var peso = p.itens.some(function (i) { return i.subtotal === null; });
+        h += '<div class="imp__pedido"><p class="imp__pessoa">Nº ' + esc(p.numero) + ' · ' + esc(p.nome) + '</p>' +
+          p.itens.map(function (i) {
+            var kg = i.unidade === 'kg' || i.subtotal === null;
+            return '<div class="imp__item"><span class="imp__caixa"></span><span><b>' + i.qtd + '</b> ' + nomeHTML(i.nome) +
+              (kg && i.peso ? ' (' + kgTexto(gramasSalvas(i)) + ', ' + dinheiro(i.subtotal) + ')' : kg ? ' (pesar)' : '') + '</span></div>' +
+              (kg && !i.peso ? '<div class="imp__peso"><span>Peso:</span><span class="imp__risco"></span><span>kg</span></div>' : '');
+          }).join('') +
+          '<div class="imp__total"><span>Total' + (p.pago ? ' (pago)' : '') + '</span><b>' + dinheiro(p.total) + (peso ? ' + peso' : '') + '</b></div>' +
+          (p.obs ? '<p class="imp__obs">Obs.: ' + esc(p.obs) + '</p>' : '') + '</div>';
+      });
+    }
+    h += '<div class="imp__fim"><span>' + plural(r.itens, 'item', 'itens') + '</span><b>' + dinheiro(r.total) + (r.temPeso ? ' + peso' : '') + '</b></div>';
+    var el = $('impressao');
+    el.className = 'impressao impressao--' + op.papel;
+    el.innerHTML = h;
+  }
+  function ligarImpressao() {
+    try {
+      var salvo = JSON.parse(localStorage.getItem(K_IMPRESSAO) || 'null');
+      if (salvo) {
+        var r = document.querySelector('input[name="papel"][value="' + salvo.papel + '"]');
+        if (r) r.checked = true;
+        $('imp-separar').checked = salvo.separar !== false;
+        $('imp-pessoas').checked = salvo.pessoas !== false;
+      }
+    } catch (e) { /* sem armazenamento */ }
+    $('imprimir').addEventListener('click', function () {
+      var op = opcoesImpressao();
+      if (!op.separar && !op.pessoas) { avisar('Marque o que você quer imprimir.'); return; }
+      if (!estado.dados || !estado.dados.pedidos.some(function (p) { return !p.cancelado; })) { avisar('Não há pedidos nesta rodada para imprimir.'); return; }
+      try { localStorage.setItem(K_IMPRESSAO, JSON.stringify(op)); } catch (e) { /* sem armazenamento */ }
+      montarImpressao(op);
+      window.print();
+    });
+  }
+
+  var ABAS = ['tickets', 'resumo', 'produtos'];
   function trocarAba(qual) {
-    var tickets = qual === 'tickets';
-    $('aba-tickets').setAttribute('aria-selected', String(tickets));
-    $('aba-resumo').setAttribute('aria-selected', String(!tickets));
-    $('aba-tickets').tabIndex = tickets ? 0 : -1;
-    $('aba-resumo').tabIndex = tickets ? -1 : 0;
-    $('painel-tickets').hidden = !tickets;
-    $('painel-resumo').hidden = tickets;
+    ABAS.forEach(function (a) {
+      var ativa = a === qual;
+      $('aba-' + a).setAttribute('aria-selected', String(ativa));
+      $('aba-' + a).tabIndex = ativa ? 0 : -1;
+      $('painel-' + a).hidden = !ativa;
+    });
+    if (qual === 'produtos') renderProdutos(true);
   }
 
   function ligarEventos() {
@@ -529,17 +920,19 @@
       estado.novos.clear();
       carregar(false);
     });
-    ['aba-tickets', 'aba-resumo'].forEach(function (id) {
-      $(id).addEventListener('click', function () { trocarAba(id === 'aba-tickets' ? 'tickets' : 'resumo'); });
-      $(id).addEventListener('keydown', function (e) {
+    ABAS.forEach(function (a, i) {
+      $('aba-' + a).addEventListener('click', function () { trocarAba(a); });
+      $('aba-' + a).addEventListener('keydown', function (e) {
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-          var outra = id === 'aba-tickets' ? 'resumo' : 'tickets';
+          var outra = ABAS[(i + (e.key === 'ArrowRight' ? 1 : ABAS.length - 1)) % ABAS.length];
           trocarAba(outra);
           $('aba-' + outra).focus();
           e.preventDefault();
         }
       });
     });
+    ligarProdutos();
+    ligarImpressao();
     $('filtros').addEventListener('click', function (e) {
       var b = e.target.closest('[data-filtro]');
       if (!b) return;
@@ -554,10 +947,46 @@
       clearTimeout(buscaTimer);
       buscaTimer = setTimeout(function () { estado.busca = e.target.value; renderTickets(); }, 120);
     });
+    $('tickets').addEventListener('input', function (e) {
+      if (e.target.getAttribute('data-campo') !== 'peso') return;
+      var o = onde(e.target);
+      var item = o && itemDo(acharPedido(o.numero), o.id);
+      if (!item) return;
+      var chave = chavePeso(o.numero, o.id);
+      var ed = pesosEdicao[chave] || {};
+      ed.texto = e.target.value;
+      ed.gramas = gramasDe(e.target.value);
+      ed.erro = false;
+      if (ed.enviando === undefined && ed.gramas === gramasSalvas(item)) delete pesosEdicao[chave];
+      else pesosEdicao[chave] = ed;
+      atualizarPeso(o.numero, o.id);
+    });
+    $('tickets').addEventListener('change', function (e) {
+      if (e.target.getAttribute('data-campo') !== 'peso') return;
+      var o = onde(e.target);
+      if (o) salvarPeso(o.numero, o.id);
+    });
+    $('tickets').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.target.getAttribute('data-campo') !== 'peso') return;
+      e.preventDefault();
+      var o = onde(e.target);
+      if (o) salvarPeso(o.numero, o.id);
+      e.target.blur();
+    });
+    $('tickets').addEventListener('focusout', function (e) {
+      if (e.target.getAttribute('data-campo') !== 'peso') return;
+      var o = onde(e.target);
+      if (!o) return;
+      var ed = pesosEdicao[chavePeso(o.numero, o.id)];
+      if (ed && typeof ed.gramas === 'number' && !isNaN(ed.gramas)) { ed.texto = kgCampo(ed.gramas); e.target.value = ed.texto; }
+      else if (!ed) { var it = itemDo(acharPedido(o.numero), o.id); e.target.value = it && it.peso ? kgCampo(gramasSalvas(it)) : ''; }
+    });
     $('tickets').addEventListener('click', function (e) {
       var t = e.target.closest('.ticket');
       if (!t) return;
       var numero = t.getAttribute('data-numero');
+      var bp = e.target.closest('.peso__salvar');
+      if (bp) { var o = onde(bp); if (o) salvarPeso(o.numero, o.id); return; }
       var alt = e.target.closest('.alternar');
       if (alt) {
         marcar(numero, alt.getAttribute('data-campo'), alt.getAttribute('aria-pressed') !== 'true');

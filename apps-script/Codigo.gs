@@ -54,7 +54,7 @@ var CAMPOS = {
   ITENS: [
     ['numero', 'Nº pedido'], ['data', 'Data'], ['rodada', 'Rodada'], ['cliente', 'Cliente'],
     ['id', 'ID produto'], ['produto', 'Produto'], ['qtd', 'Qtd'], ['preco', 'Preço (R$)'],
-    ['subtotal', 'Subtotal (R$)'], ['unidade', 'Unidade']
+    ['subtotal', 'Subtotal (R$)'], ['unidade', 'Unidade'], ['peso', 'Peso (kg)']
   ],
   PRODUTOS: [
     ['id', 'ID'], ['categoria', 'Categoria'], ['produto', 'Produto'], ['curto', 'Nome curto'],
@@ -190,11 +190,15 @@ function doPost(e) {
       case 'marcar':
       case 'loja':
       case 'novaRodada':
+      case 'salvarProdutos':
+      case 'peso':
         var auth = autenticar_(d.token);
         if (!auth.ok) return json_(auth);
         if (d.acao === 'painel') return json_(dadosPainel_(d.rodada));
         if (d.acao === 'marcar') return json_(marcar_(d));
         if (d.acao === 'loja') return json_(configurarLoja_(d));
+        if (d.acao === 'salvarProdutos') return json_(salvarProdutos_(d));
+        if (d.acao === 'peso') return json_(salvarPeso_(d));
         return json_(novaRodada_());
       default:
         return json_({ ok: false, codigo: 'acao', erro: 'Ação desconhecida.' });
@@ -352,7 +356,7 @@ function gravarPedido_(p) {
   var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
   var linha = linhaPorCampos_(tp, {
     numero: "'" + p.numero, data: p.data, rodada: p.rodada, nome: texto_(p.nome), email: texto_(p.email),
-    whatsapp: texto_(p.whatsapp), itens: texto_(p.itens.map(function (i) { return i.qtd + 'x ' + i.nome; }).join('\n')),
+    whatsapp: texto_(p.whatsapp), itens: texto_(textoItens_(p.itens)),
     total: p.total / 100, obs: texto_(p.obs), pago: false, entregue: false, cancelado: false,
     confirmacao: '', envio: texto_(p.idEnvio)
   });
@@ -416,22 +420,37 @@ function lerItens_() {
   var mapa = {};
   linhasDados_(t).forEach(function (r) {
     var numero = formatarNumero_(r[t.col.numero]);
-    var qtd = Math.floor(numero_(r[t.col.qtd]));
-    if (!numero || !isFinite(qtd) || qtd < 1) return;
-    var unidade = /kg/i.test(String(r[t.col.unidade] || '')) ? 'kg' : 'un';
-    var subBruto = r[t.col.subtotal];
-    var sub = unidade === 'kg' || subBruto === '' || subBruto === null ? null : centavos_(numero_(subBruto));
-    if (sub !== null && !isFinite(sub)) sub = null;
-    (mapa[numero] = mapa[numero] || []).push({
-      id: String(r[t.col.id] || '').trim(),
-      nome: String(r[t.col.produto] || '').trim(),
-      qtd: qtd,
-      preco: centavos_(numero_(r[t.col.preco])) || 0,
-      subtotal: sub,
-      unidade: unidade
-    });
+    var item = numero ? itemDaLinha_(r, t.col) : null;
+    if (item) (mapa[numero] = mapa[numero] || []).push(item);
   });
   return mapa;
+}
+
+/** Uma linha da aba Itens. Item por quilo só tem valor depois de pesado (coluna Peso). */
+function itemDaLinha_(r, c) {
+  var qtd = Math.floor(numero_(r[c.qtd]));
+  if (!isFinite(qtd) || qtd < 1) return null;
+  var unidade = /kg/i.test(String(r[c.unidade] || '')) ? 'kg' : 'un';
+  var preco = centavos_(numero_(r[c.preco])) || 0;
+  var peso = null;
+  var sub;
+  if (unidade === 'kg') {
+    peso = pesoValido_(r[c.peso]);
+    sub = peso === null ? null : valorPeso_(preco, peso);
+  } else {
+    var bruto = r[c.subtotal];
+    sub = bruto === '' || bruto === null ? null : centavos_(numero_(bruto));
+    if (sub !== null && !isFinite(sub)) sub = null;
+  }
+  return {
+    id: String(r[c.id] || '').trim(),
+    nome: String(r[c.produto] || '').trim(),
+    qtd: qtd,
+    preco: preco,
+    subtotal: sub,
+    unidade: unidade,
+    peso: peso
+  };
 }
 
 function lerPedidos_(rodada) {
@@ -525,6 +544,7 @@ function dadosPainel_(rodadaPedida) {
     aberto: lojaAberta_(),
     aviso: avisoAtual_(),
     planilha: planilha_().getUrl(),
+    catalogo: lerCatalogo_(),
     pedidos: pedidos.map(pedidoPublico_),
     resumo: calcularResumo_(pedidos, lerCatalogo_(), rodada)
   };
@@ -561,6 +581,107 @@ function marcar_(d) {
     soltar_(lock);
   }
   if (!achou) return { ok: false, codigo: 'nao-encontrado', erro: 'Pedido nº ' + numero + ' não encontrado.' };
+  try { atualizarResumo(); } catch (err) { console.error(err); }
+  var lista = lerPedidos_(null).filter(function (p) { return p.numero === numero; });
+  return { ok: true, pedido: lista.length ? pedidoPublico_(lista[0]) : null };
+}
+
+/** Atualiza preço e disponibilidade dos produtos (aba Produtos) pelo painel. */
+function salvarProdutos_(d) {
+  if (!Array.isArray(d.produtos) || !d.produtos.length) return { ok: false, codigo: 'validacao', erro: 'Nenhuma alteração para salvar.' };
+  if (d.produtos.length > 300) return { ok: false, codigo: 'validacao', erro: 'Alterações demais de uma vez.' };
+  var mudancas = [];
+  for (var i = 0; i < d.produtos.length; i++) {
+    var m = d.produtos[i] || {};
+    var id = String(m.id || '').trim();
+    if (!id) return { ok: false, codigo: 'validacao', erro: 'Produto inválido.' };
+    var item = { id: id };
+    if (m.preco !== undefined && m.preco !== null) {
+      var preco = numero_(m.preco);
+      if (!isFinite(preco) || preco < 0 || preco > 100000) return { ok: false, codigo: 'validacao', erro: 'Preço inválido para ' + id + '.' };
+      item.preco = Math.round(preco * 100) / 100;
+    }
+    if (typeof m.disponivel === 'boolean') item.disponivel = m.disponivel;
+    mudancas.push(item);
+  }
+  var lock = travar_(20000);
+  var naoAchados = [];
+  try {
+    var t = aba_(ABA.PRODUTOS, CAMPOS.PRODUTOS);
+    var n = t.sh.getLastRow() - 1;
+    var ids = n >= 1 ? t.sh.getRange(2, t.col.id + 1, n, 1).getValues().map(function (r) { return String(r[0] || '').trim(); }) : [];
+    mudancas.forEach(function (m) {
+      var idx = ids.indexOf(m.id);
+      if (idx < 0) { naoAchados.push(m.id); return; }
+      var linha = idx + 2;
+      if (m.preco !== undefined) t.sh.getRange(linha, t.col.preco + 1).setValue(m.preco);
+      if (m.disponivel !== undefined) {
+        var cel = t.sh.getRange(linha, t.col.disponivel + 1);
+        cel.insertCheckboxes();
+        cel.setValue(m.disponivel);
+      }
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    soltar_(lock);
+  }
+  return { ok: true, naoAchados: naoAchados, catalogo: lerCatalogo_() };
+}
+
+/**
+ * Grava o peso de um item vendido por quilo e soma o valor no total do pedido.
+ * Peso vazio volta o item para "a pesar".
+ */
+function salvarPeso_(d) {
+  var numero = formatarNumero_(d.numero);
+  var id = String(d.id || '').trim();
+  if (!numero || !id) return { ok: false, codigo: 'validacao', erro: 'Item inválido.' };
+  var peso = null;
+  if (d.peso !== null && d.peso !== undefined && String(d.peso).trim() !== '') {
+    peso = pesoValido_(d.peso);
+    if (peso === null) return { ok: false, codigo: 'validacao', erro: 'Peso inválido. Digite em quilos, por exemplo 1,250.' };
+  }
+  var erro = null;
+  var lock = travar_(20000);
+  try {
+    var tp = aba_(ABA.PEDIDOS, CAMPOS.PEDIDOS);
+    var lp = linhaDoPedido_(tp, numero);
+    var ti = aba_(ABA.ITENS, CAMPOS.ITENS);
+    var c = ti.col;
+    var vals = linhasDados_(ti);
+    var alvo = -1;
+    for (var i = 0; i < vals.length && lp; i++) {
+      if (formatarNumero_(vals[i][c.numero]) === numero && String(vals[i][c.id] || '').trim() === id) { alvo = i; break; }
+    }
+    if (alvo < 0) {
+      erro = { ok: false, codigo: 'nao-encontrado', erro: 'Item não encontrado no pedido nº ' + numero + '.' };
+    } else if (!/kg/i.test(String(vals[alvo][c.unidade] || ''))) {
+      erro = { ok: false, codigo: 'validacao', erro: 'Este item não é vendido por quilo.' };
+    } else {
+      var antes = itemDaLinha_(vals[alvo], c);
+      vals[alvo][c.peso] = peso === null ? '' : peso;
+      var depois = itemDaLinha_(vals[alvo], c);
+      var linha = alvo + 2;
+      ti.sh.getRange(linha, c.peso + 1).setNumberFormat('0.000').setValue(peso === null ? '' : peso);
+      ti.sh.getRange(linha, c.subtotal + 1).setValue(depois.subtotal === null ? '' : depois.subtotal / 100);
+
+      // Troca só o valor deste item no total (um ajuste feito à mão no total continua valendo).
+      var itensPedido = vals.filter(function (r) { return formatarNumero_(r[c.numero]) === numero; })
+        .map(function (r) { return itemDaLinha_(r, c); })
+        .filter(function (x) { return x; });
+      var celTotal = tp.sh.getRange(lp, tp.col.total + 1);
+      var totalAtual = numero_(celTotal.getValue());
+      var novo = isFinite(totalAtual)
+        ? centavos_(totalAtual) - (antes.subtotal || 0) + (depois.subtotal || 0)
+        : itensPedido.reduce(function (s, x) { return s + (x.subtotal || 0); }, 0);
+      celTotal.setValue(Math.max(0, novo) / 100);
+      tp.sh.getRange(lp, tp.col.itens + 1).setValue(texto_(textoItens_(itensPedido)));
+      SpreadsheetApp.flush();
+    }
+  } finally {
+    soltar_(lock);
+  }
+  if (erro) return erro;
   try { atualizarResumo(); } catch (err) { console.error(err); }
   var lista = lerPedidos_(null).filter(function (p) { return p.numero === numero; });
   return { ok: true, pedido: lista.length ? pedidoPublico_(lista[0]) : null };
@@ -631,7 +752,7 @@ function calcularResumo_(pedidos, catalogo, rodada) {
       if (!produtos[k]) {
         produtos[k] = {
           id: it.id, nome: it.nome, categoria: categoriaDe[it.id] || 'Outros',
-          qtd: 0, valor: 0, temPeso: false, quem: {}, ordemQuem: [],
+          qtd: 0, valor: 0, gramas: 0, temPeso: false, quem: {}, ordemQuem: [],
           ordem: ordem[it.id] !== undefined ? ordem[it.id] : 9999
         };
       }
@@ -639,6 +760,7 @@ function calcularResumo_(pedidos, catalogo, rodada) {
       pr.qtd += it.qtd;
       t.itens += it.qtd;
       if (it.subtotal === null) { pr.temPeso = true; t.temPeso = true; } else { pr.valor += it.subtotal; }
+      if (it.peso) pr.gramas += Math.round(it.peso * 1000);
       if (!pr.quem[chave]) { pr.quem[chave] = { nome: pessoas[chave].rotulo, qtd: 0 }; pr.ordemQuem.push(chave); }
       pr.quem[chave].qtd += it.qtd;
     });
@@ -647,7 +769,7 @@ function calcularResumo_(pedidos, catalogo, rodada) {
   var listaProdutos = Object.keys(produtos).map(function (k) {
     var p = produtos[k];
     return {
-      id: p.id, nome: p.nome, categoria: p.categoria, qtd: p.qtd, valor: p.valor, temPeso: p.temPeso, ordem: p.ordem,
+      id: p.id, nome: p.nome, categoria: p.categoria, qtd: p.qtd, valor: p.valor, temPeso: p.temPeso, gramas: p.gramas, ordem: p.ordem,
       quem: p.ordemQuem.map(function (c) { return p.quem[c]; })
     };
   }).sort(function (a, b) { return a.ordem - b.ordem || a.nome.localeCompare(b.nome); });
@@ -687,7 +809,10 @@ function textoProdutos_(produtos, t, rodada) {
       l.push(String(cat).toUpperCase());
     }
     var quem = p.quem.map(function (q) { return q.qtd + ' ' + q.nome; }).join(', ');
-    l.push('• *' + p.nome + '*: ' + p.qtd + ' (' + quem + ')' + (p.temPeso ? ', pelo peso' : ''));
+    var peso = [];
+    if (p.gramas) peso.push(kg_(p.gramas / 1000));
+    if (p.temPeso) peso.push('pelo peso');
+    l.push('• *' + p.nome + '*: ' + p.qtd + ' (' + quem + ')' + (peso.length ? ', ' + peso.join(' + ') : ''));
   });
   l.push('');
   l.push('*Total:* ' + t.itens + (t.itens === 1 ? ' item' : ' itens') + ' (' + reais_(t.total) + (t.temPeso ? ' + itens pelo peso' : '') + ')');
@@ -937,7 +1062,7 @@ function garantirEstrutura_(forcar) {
       tr.sh.getRange(2, 1, linhas.length, linhas[0].length).setValues(linhas);
     }
     formatar_(tp, { data: 'dd/mm/yyyy hh:mm', total: '"R$" #,##0.00' }, { numero: 70, data: 130, rodada: 70, nome: 180, email: 220, whatsapp: 130, itens: 300, total: 100, obs: 220, pago: 70, entregue: 80, cancelado: 90, confirmacao: 170, envio: 120 }, ['itens', 'obs']);
-    formatar_(ti, { data: 'dd/mm/yyyy hh:mm', preco: '"R$" #,##0.00', subtotal: '"R$" #,##0.00' }, { numero: 90, data: 130, rodada: 70, cliente: 180, id: 170, produto: 320, qtd: 60, preco: 100, subtotal: 110, unidade: 80 }, []);
+    formatar_(ti, { data: 'dd/mm/yyyy hh:mm', preco: '"R$" #,##0.00', subtotal: '"R$" #,##0.00', peso: '0.000' }, { numero: 90, data: 130, rodada: 70, cliente: 180, id: 170, produto: 320, qtd: 60, preco: 100, subtotal: 110, unidade: 80, peso: 90 }, []);
     formatar_(tr, { preco: '"R$" #,##0.00' }, { id: 170, categoria: 170, produto: 330, curto: 220, detalhe: 320, preco: 100, unidade: 80, disponivel: 95 }, []);
     try { tp.sh.hideColumns(tp.col.envio + 1); } catch (e) { /* já escondida */ }
     ss.getSheets().forEach(function (sh) {
@@ -1143,6 +1268,27 @@ function numero_(v) {
 }
 
 function centavos_(reais) { return Math.round(Number(reais) * 100); }
+
+/** Peso em quilos (até 3 casas), ou null se vazio ou fora do razoável. */
+function pesoValido_(v) {
+  var n = numero_(v);
+  if (!isFinite(n)) return null;
+  n = Math.round(n * 1000) / 1000;
+  return n > 0 && n < 100 ? n : null;
+}
+
+/** Valor em centavos de um item por quilo: preço do kg x peso, arredondado no centavo. */
+function valorPeso_(precoKg, peso) {
+  return Math.round(precoKg * Math.round(peso * 1000) / 1000);
+}
+
+function kg_(peso) {
+  return (Math.round(peso * 1000) / 1000).toFixed(3).replace('.', ',') + ' kg';
+}
+
+function textoItens_(itens) {
+  return itens.map(function (i) { return i.qtd + 'x ' + i.nome + (i.peso ? ' (' + kg_(i.peso) + ')' : ''); }).join('\n');
+}
 
 function verdadeiro_(v, padrao) {
   if (v === true || v === false) return v;
