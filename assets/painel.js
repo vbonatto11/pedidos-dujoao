@@ -47,6 +47,21 @@
     return d;
   }
   function primeiroNome(n) { return String(n || '').trim().split(/\s+/)[0] || ''; }
+  function capitaliza(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+  function listaItens(itens) {
+    var partes = itens.map(function (i) { return i.qtd + ' ' + i.nome + (i.subtotal === null ? ' (pelo peso)' : ''); });
+    if (partes.length <= 1) return partes.join('');
+    return partes.slice(0, -1).join(', ') + ' e ' + partes[partes.length - 1];
+  }
+  /** Mensagem de cobrança: Oiii *Nome*, o seu pedido foi *itens* e ficou *total*. PIX... */
+  function textoCobranca(p) {
+    var temPeso = p.itens.some(function (i) { return i.subtotal === null; });
+    var pix = CFG.pix || {};
+    var t = 'Oiii *' + capitaliza(primeiroNome(p.nome)) + '*, o seu pedido foi *' + listaItens(p.itens) + '* e ficou *' +
+      dinheiro(p.total) + '*' + (temPeso ? ' mais os itens pelo peso' : '') + '.';
+    if (pix.chave) t += ' Pode mandar o PIX para o meu pai, ' + (pix.nome || '') + ', na chave *' + pix.chave + '*.';
+    return t;
+  }
   function nbsp(s) { return String(s).replace(/ (\d)/g, ' $1'); }
 
   function lerToken() {
@@ -342,6 +357,10 @@
           botaoAlternar(p, 'pago', 'Pago', rotuloNum) +
           botaoAlternar(p, 'entregue', 'Entregue', rotuloNum) +
         '</div>') +
+      (!p.pago && !p.cancelado
+        ? '<a class="ticket__cobrar" href="https://wa.me/' + (fone ? '55' + fone : '') + '?text=' + encodeURIComponent(textoCobranca(p)) + '" target="_blank" rel="noopener">' +
+          '<svg aria-hidden="true"><use href="#i-conversa"/></svg>Cobrar no WhatsApp<span class="sr-only"> (pedido ' + rotuloNum + ')</span></a>'
+        : '') +
       '<button type="button" class="ticket__cancelar" data-acao="cancelar">' + (p.cancelado ? 'Reativar pedido' : 'Cancelar pedido') + '<span class="sr-only"> ' + rotuloNum + '</span></button>' +
     '</article>';
   }

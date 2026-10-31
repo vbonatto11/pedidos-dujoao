@@ -13,6 +13,7 @@
   var K_DADOS = 'dujoao.dados.v1';
   var K_ENVIO = 'dujoao.envio.v2';
   var K_CATALOGO = 'dujoao.catalogo.v1';
+  var K_ULTIMO = 'dujoao.ultimo.v1';
   var MAX_QTD = 99;
   var VALIDADE_ENVIO = 2 * 3600 * 1000;
   var RE_EMAIL = /^[^\s@"<>(),;:]+@[^\s@"<>(),;:.]+(\.[^\s@"<>(),;:.]+)+$/;
@@ -390,6 +391,43 @@
     $('total-valor').textContent = t.total || !t.temPeso ? dinheiro(t.total) : 'Pelo peso';
     $('total-extra').hidden = !t.temPeso || (!t.total && t.temPeso);
     atualizarBarra();
+    atualizarRepetir();
+  }
+
+  /* ---------- repetir o último pedido ---------- */
+  function ultimoPedido() {
+    var u = armazenamento.ler(K_ULTIMO, null);
+    return u && Array.isArray(u.itens) && u.itens.length ? u : null;
+  }
+  function atualizarRepetir() {
+    var box = $('repetir');
+    if (!box) return;
+    var u = ultimoPedido();
+    if (!u || linhasCarrinho().length || estado.confirmado || !estado.aberto) { box.hidden = true; return; }
+    var nomes = u.itens.filter(function (i) {
+      var p = estado.porId.get(i.id);
+      return p && p.disponivel;
+    }).map(function (i) { return i.qtd + ' ' + estado.porId.get(i.id).nome; });
+    if (!nomes.length) { box.hidden = true; return; }
+    $('repetir-titulo').textContent = 'Seu último pedido' + (u.numero ? ' (nº\u00A0' + u.numero + ')' : '');
+    $('repetir-texto').textContent = nomes.slice(0, 3).join(', ') + (nomes.length > 3 ? ' e mais ' + (nomes.length - 3) : '');
+    box.hidden = false;
+  }
+  function repetirPedido() {
+    var u = ultimoPedido();
+    if (!u || !estado.aberto) return;
+    var fora = [];
+    u.itens.forEach(function (i) {
+      var p = estado.porId.get(i.id);
+      if (p && p.disponivel) estado.carrinho[i.id] = Math.min(MAX_QTD, (estado.carrinho[i.id] || 0) + (Number(i.qtd) || 1));
+      else fora.push(p ? p.nome : 'Um produto');
+    });
+    if (!estado.envioIncerto) { estado.idEnvio = null; salvarEnvio(); }
+    salvarCarrinho();
+    estado.produtos.forEach(function (p) { atualizarItem(p.id); });
+    atualizarResumo();
+    if (fora.length) avisar(fora.join(', ') + (fora.length === 1 ? ' esgotou e ficou de fora.' : ' esgotaram e ficaram de fora.'), 6000);
+    abrirComanda();
   }
 
   /* ---------- loja aberta/fechada e avisos ---------- */
@@ -423,6 +461,7 @@
       ? 'Use o + ao lado dos produtos para montar o pedido.'
       : 'Os pedidos estão fechados agora. Seu carrinho fica guardado neste aparelho.';
     if (!estado.enviando) botaoEnviando(false);
+    atualizarRepetir();
   }
 
   /* ---------- seções e chips ---------- */
@@ -758,6 +797,11 @@
       obs: d.obs,
       nota: diferente ? 'Este pedido já tinha sido registrado antes da sua última alteração. Para acrescentar produtos, faça outro pedido.' : ''
     };
+    armazenamento.gravar(K_ULTIMO, {
+      numero: String(r.numero || ''),
+      t: Date.now(),
+      itens: itens.filter(function (i) { return i.id; }).map(function (i) { return { id: i.id, qtd: i.qtd }; })
+    });
     estado.carrinho = {};
     salvarCarrinho();
     estado.idEnvio = null;
@@ -784,9 +828,10 @@
     var email = esc(c.email).replace(/@/g, '@<wbr>').replace(/\./g, '<wbr>.');
     var nome = esc(primeiroNome(c.nome));
     var msg;
-    if (c.emailEnviado === true) msg = 'Obrigado, ' + nome + '! Enviamos a confirmação para:<strong class="sucesso__email">' + email + '</strong>';
+    var dicaSpam = '<span class="sucesso__dica">Não chegou? Confira a caixa de spam ou lixo eletrônico.</span>';
+    if (c.emailEnviado === true) msg = 'Obrigado, ' + nome + '! Enviamos a confirmação para:<strong class="sucesso__email">' + email + '</strong>' + dicaSpam;
     else if (c.emailEnviado === false) msg = 'Obrigado, ' + nome + '! Seu pedido foi registrado, mas o e-mail de confirmação não saiu. Guarde este resumo.';
-    else msg = 'Obrigado, ' + nome + '! Seu pedido está registrado. A confirmação vai para:<strong class="sucesso__email">' + email + '</strong>';
+    else msg = 'Obrigado, ' + nome + '! Seu pedido está registrado. A confirmação vai para:<strong class="sucesso__email">' + email + '</strong>' + dicaSpam;
     var nomeResp = CFG.responsavel || '';
     var rotuloWhats = CFG.whatsapp ? 'Avisar ' + (nomeResp ? 'o ' + nomeResp + ' ' : '') + 'no WhatsApp' : 'Compartilhar no WhatsApp';
     var s = $('etapa-sucesso');
@@ -825,6 +870,7 @@
     $('fechar').setAttribute('aria-label', 'Fechar e continuar escolhendo');
     esconderAlerta();
     atualizarBarra();
+    atualizarRepetir();
   }
 
   function copiar(texto) {
@@ -856,6 +902,7 @@
         return;
       }
       if (e.target.closest('#ir-dados')) { irParaDados(); return; }
+      if (e.target.closest('#repetir-btn')) { repetirPedido(); return; }
       if (e.target.closest('#novo-pedido')) {
         voltarAoPedido();
         fecharComanda(false);

@@ -791,6 +791,33 @@ h1, h2, h3, p { margin: 0; }
 }
 
 
+/* Repetir o último pedido */
+.repetir {
+  display: flex; align-items: center; gap: 14px;
+  max-width: 560px; margin: 18px auto 0;
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--ouro); border-radius: 14px;
+  background: rgba(0, 0, 0, 0.16);
+  text-align: left;
+}
+.repetir__info { flex: 1; min-width: 0; }
+.repetir__titulo { font-size: 14.5px; font-weight: 700; color: var(--ouro-suave); }
+.repetir__texto { margin-top: 2px; font-size: 14px; line-height: 1.4; color: var(--texto-2); }
+.repetir .btn { flex: none; min-height: 46px; padding: 10px 16px; font-size: 15px; }
+@media (max-width: 420px) { .repetir { flex-direction: column; align-items: stretch; } }
+
+.sucesso__dica { display: block; margin-top: 6px; font-size: 13.5px; color: var(--tinta-2); }
+
+/* Painel: cobrar no WhatsApp */
+.ticket__cobrar {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; margin-top: 8px;
+  border-radius: 11px;
+  background: var(--vinho); color: #fff;
+  font-weight: 700; font-size: 15px; text-decoration: none;
+}
+.ticket__cobrar svg { width: 18px; height: 18px; }
+
 /* Efeitos de passar o mouse: só em aparelhos com mouse (no toque eles "grudam") */
 @media (hover: hover) {
   .chip:hover { border-color: var(--ouro); }
@@ -804,4 +831,5 @@ h1, h2, h3, p { margin: 0; }
   .icone-btn:hover { border-color: var(--ouro); }
   .alternar:not([aria-pressed="true"]):hover { border-color: var(--tinta-2); }
   .ticket__cancelar:hover { color: var(--erro); }
+  .ticket__cobrar:hover { background: #7a1a18; }
 }

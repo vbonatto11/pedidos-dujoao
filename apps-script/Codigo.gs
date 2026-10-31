@@ -868,8 +868,9 @@ function emailHtml_(p, paraDono) {
   return '' +
     '<div style="background:#efe5e0;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#2a0b0a">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fffefb;border-radius:14px;overflow:hidden">' +
-      '<tr><td style="background:#641312;padding:22px;text-align:center">' +
-        '<img src="' + esc_(CONFIG.URL_SITE) + 'assets/img/logo-email.png" width="150" alt="DuJOÃO, A Casa do Torresmo" style="display:block;margin:0 auto;border:0;max-width:150px;height:auto">' +
+      '<tr><td style="background:#641312;padding:20px 22px;text-align:center">' +
+        '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:28px;letter-spacing:4px;color:#ffffff">DuJOÃO</div>' +
+        '<div style="margin-top:4px;font-family:Georgia,\'Times New Roman\',serif;font-size:12px;letter-spacing:2px;color:#f8a828">A CASA DO TORRESMO</div>' +
       '</td></tr>' +
       '<tr><td style="padding:24px 24px 4px">' +
         '<p style="margin:0;font-size:14px;color:#6e5551">Pedido nº ' + esc_(p.numero) + (paraDono && p.rodada ? ', rodada ' + esc_(String(p.rodada)) : '') + '</p>' +
