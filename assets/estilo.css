@@ -957,7 +957,11 @@ h1, h2, h3, p { margin: 0; }
   .impressao--80 { width: 72mm; font-size: 12.5px; }
   .impressao--58 { width: 48mm; font-size: 11px; }
   .impressao--a4 { width: auto; font-size: 13px; }
-  .imp__cab { padding-bottom: 2mm; border-bottom: 1.5px dashed #000; text-align: center; }
+  .imp__cab { display: flex; align-items: center; justify-content: space-between; gap: 2mm; padding-bottom: 2mm; border-bottom: 1.5px dashed #000; text-align: center; }
+  .imp__cabtexto { flex: 1; min-width: 0; }
+  .imp__logo { flex: none; width: 10mm; height: auto; }
+  .impressao--58 .imp__logo { width: 7.5mm; }
+  .impressao--a4 .imp__logo { width: 14mm; }
   .imp__marca { font-size: 1.6em; font-weight: 800; letter-spacing: .12em; }
   .imp__titulo { margin: 3mm 0 1mm; font-size: 1.15em; font-weight: 800; }
   .imp__cat { margin-top: 2mm; border-bottom: 1px solid #000; font-size: .85em; font-weight: 800; text-transform: uppercase; }

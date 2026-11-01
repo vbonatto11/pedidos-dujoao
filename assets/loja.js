@@ -179,7 +179,7 @@
   function seloDe(p) {
     var m = String(p.selo || '').match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|un)\b/i) ||
       String(p.nome || '').match(/(\d+(?:[.,]\d+)?)\s*(g|kg)\b/i);
-    if (!m) return null;
+    if (!m) return p.unidade === 'kg' ? { n: 'kg', u: 'pelo peso' } : null;
     return { n: m[1], u: UNIDADES[m[2].toLowerCase()] || m[2] };
   }
 

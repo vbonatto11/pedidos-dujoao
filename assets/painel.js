@@ -874,6 +874,8 @@
 
   /* ---------- impressão (térmica 80/58 mm ou A4) ---------- */
   var K_IMPRESSAO = 'dujoao.painel.impressao';
+  var LOGO_IMPRESSAO = 'assets/img/emblema-impressao.png';
+  new Image().src = LOGO_IMPRESSAO; // já deixa o logo carregado para a hora de imprimir
   function opcoesImpressao() {
     var papel = document.querySelector('input[name="papel"]:checked');
     return { papel: papel ? papel.value : '80', separar: $('imp-separar').checked, pessoas: $('imp-pessoas').checked };
@@ -883,17 +885,20 @@
     var info = {};
     ((estado.dados.resumo && estado.dados.resumo.produtos) || []).forEach(function (p, k) { info[p.id || p.nome] = { categoria: p.categoria, ordem: k }; });
     var chaveNome = function (n) { return normaliza(n).replace(/\s+/g, ' ').trim(); };
-    var chave = function (p) { return p.email || 'nome:' + chaveNome(p.nome); };
+    // pessoa = mesmo e-mail e mesmo nome (quem pediu para outra pessoa com o próprio e-mail aparece separado)
+    var chave = function (p) { return (p.email || '') + '|' + chaveNome(p.nome); };
     var nomes = {};
+    var emails = {};
     var contagem = {};
     pedidos.forEach(function (p) {
       var c = chave(p);
       if (nomes[c] !== undefined) return;
       nomes[c] = p.nome;
+      emails[c] = p.email || '';
       contagem[chaveNome(p.nome)] = (contagem[chaveNome(p.nome)] || 0) + 1;
     });
     var rotulo = function (c) {
-      return contagem[chaveNome(nomes[c])] > 1 && c.indexOf('nome:') !== 0 ? nomes[c] + ' (' + c.split('@')[0] + ')' : nomes[c];
+      return contagem[chaveNome(nomes[c])] > 1 && emails[c] ? nomes[c] + ' (' + emails[c].split('@')[0] + ')' : nomes[c];
     };
     var prods = {};
     var lista = [];
@@ -929,7 +934,8 @@
     var agora = new Date();
     var dois = function (n) { return String(n).padStart(2, '0'); };
     var quando = dois(agora.getDate()) + '/' + dois(agora.getMonth() + 1) + '/' + agora.getFullYear() + ' ' + dois(agora.getHours()) + ':' + dois(agora.getMinutes());
-    var h = '<div class="imp__cab"><p class="imp__marca">DuJOÃO</p><p>Pedido da rodada ' + d.rodada + '</p><p>' + quando + '</p></div>';
+    var logo = '<img class="imp__logo" src="' + LOGO_IMPRESSAO + '" alt="">';
+    var h = '<div class="imp__cab">' + logo + '<div class="imp__cabtexto"><p class="imp__marca">DuJOÃO</p><p>Pedido da rodada ' + d.rodada + '</p><p>' + quando + '</p></div>' + logo + '</div>';
     if (op.separar) {
       h += '<h2 class="imp__titulo">Separar: ' + plural(r.itens, 'item', 'itens') + '</h2>';
       var cat = null;
@@ -976,7 +982,17 @@
       if (!estado.dados || !estado.dados.pedidos.some(function (p) { return !p.cancelado; })) { avisar('Não há pedidos nesta rodada para imprimir.'); return; }
       try { localStorage.setItem(K_IMPRESSAO, JSON.stringify(op)); } catch (e) { /* sem armazenamento */ }
       prepararImpressao();
-      window.print();
+      // imprime quando o logo estiver carregado (no máximo 2 segundos de espera)
+      var imgs = [].slice.call($('impressao').querySelectorAll('img'));
+      var feito = false;
+      var imprimir = function () { if (!feito) { feito = true; window.print(); } };
+      var faltam = imgs.filter(function (i) { return !i.complete; });
+      if (!faltam.length) { imprimir(); return; }
+      faltam.forEach(function (i) {
+        i.addEventListener('load', function () { if (imgs.every(function (x) { return x.complete; })) imprimir(); });
+        i.addEventListener('error', imprimir);
+      });
+      setTimeout(imprimir, 2000);
     });
     // Ctrl+P ou o menu do navegador também imprimem a lista, com as opções marcadas
     window.addEventListener('beforeprint', prepararImpressao);

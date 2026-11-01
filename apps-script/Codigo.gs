@@ -772,11 +772,12 @@ function calcularResumo_(pedidos, catalogo, rodada) {
 
   var ativos = pedidos.filter(function (p) { return !p.cancelado; });
 
-  // Pessoas: agrupadas pelo e-mail (duas "Ana" com e-mails diferentes são pessoas diferentes).
+  // Pessoas: mesmo e-mail e mesmo nome. Duas "Ana" com e-mails diferentes são pessoas diferentes,
+  // e dois nomes com o mesmo e-mail (alguém que pediu para outra pessoa) também aparecem separados.
   var pessoas = {};
   var ordemPessoas = [];
   ativos.forEach(function (ped) {
-    var chave = ped.email || ('nome:' + chavePessoa_(ped.nome));
+    var chave = chaveCliente_(ped);
     if (!pessoas[chave]) {
       pessoas[chave] = { chave: chave, nome: ped.nome, email: ped.email, total: 0, pago: 0, pedidos: [], temPeso: false, todosPagos: true };
       ordemPessoas.push(chave);
@@ -798,7 +799,7 @@ function calcularResumo_(pedidos, catalogo, rodada) {
   var produtos = {};
   var t = { itens: 0, total: 0, pago: 0, temPeso: false };
   ativos.forEach(function (ped) {
-    var chave = ped.email || ('nome:' + chavePessoa_(ped.nome));
+    var chave = chaveCliente_(ped);
     t.total += ped.total;
     if (ped.pago) t.pago += ped.total;
     ped.itens.forEach(function (it) {
@@ -1368,6 +1369,8 @@ function esc_(s) {
 function chave_(s) {
   return String(s === null || s === undefined ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
+
+function chaveCliente_(ped) { return (ped.email || '') + '|' + chavePessoa_(ped.nome); }
 
 function chavePessoa_(nome) {
   return String(nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();

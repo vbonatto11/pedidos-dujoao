@@ -58,7 +58,7 @@ Em 1 ou 2 minutos o site fica no ar no endereço acima.
 - **Nova rodada:** quando fechar o pedido com o DuJOÃO, toque em *Começar nova rodada*. Os pedidos antigos ficam salvos e aparecem no seletor de rodada.
 
 Também dá para marcar Pago, Entregue e Cancelado direto na planilha. O Resumo se atualiza sozinho.
-Pessoas com o mesmo nome e e-mails diferentes aparecem separadas no resumo, com o começo do e-mail entre parênteses.
+No resumo, cada pessoa é o mesmo nome com o mesmo e-mail. Quem pede para outra pessoa usando o próprio e-mail aparece com o nome de cada pedido. Pessoas com o mesmo nome e e-mails diferentes aparecem separadas, com o começo do e-mail entre parênteses.
 
 ## Mudar preços e produtos
 
