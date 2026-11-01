@@ -1,0 +1,46 @@
+const { chromium } = require('playwright');
+const OUT = process.argv[2] || require('path').join(require('os').tmpdir(), 'dujoao-telas');
+const B = 'http://localhost:8790';
+let f = 0; const ok = (c, m) => { console.log((c ? 'OK   ' : 'FALHA') + ' ' + m); if (!c) f++; };
+(async () => {
+  await fetch(B + '/__reset');
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => { console.log('PAGEERROR', e.message); f++; });
+  await p.goto(B + '/', { waitUntil: 'networkidle' });
+  ok(await p.isHidden('#repetir'), 'sem pedido anterior: cartão "repetir" escondido');
+  await p.click('.item[data-id="torresmo-180"] .qtd__mais'); await p.click('.item[data-id="torresmo-180"] .qtd__mais');
+  await p.click('.item[data-id="farofa-450"] .qtd__mais');
+  await p.click('#abrir'); await p.fill('#nome', 'bia lima'); await p.fill('#email', 'bia@example.com'); await p.fill('#whatsapp', '(19) 98888-7777');
+  await p.click('#confirmar'); await p.waitForSelector('#etapa-sucesso:not([hidden])');
+  ok(/spam/.test(await p.textContent('#etapa-sucesso')), 'confirmação lembra de olhar o spam');
+  await p.screenshot({ path: OUT + '/n1-sucesso.png' });
+  await p.click('#novo-pedido'); await p.waitForTimeout(600);
+  ok(await p.isVisible('#repetir'), 'depois do pedido aparece "Seu último pedido"');
+  ok(/2 Torresmo 180.g, 1 Farofa/.test(await p.textContent('#repetir-texto')), 'resumo: ' + await p.textContent('#repetir-texto'));
+  await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
+  await p.screenshot({ path: OUT + '/n2-repetir.png' });
+  await p.click('#repetir-btn'); await p.waitForTimeout(600);
+  ok(/3 itens/.test(await p.textContent('#barra-qtd')) && /76,00/.test(await p.textContent('#total-valor')), 'repetir colocou os mesmos itens (3 itens, R$ 76,00)');
+  ok(await p.isVisible('#comanda.comanda--aberta'), 'repetir abre a revisão do pedido');
+  await ctx.close();
+  // painel
+  const q = await (await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
+  await q.goto(B + '/painel.html', { waitUntil: 'networkidle' });
+  await q.fill('#senha', 'senha-teste-123'); await q.click('#entrar'); await q.waitForSelector('#app:not([hidden])');
+  const href = await q.getAttribute('.ticket[data-numero="0001"] .ticket__cobrar', 'href');
+  const msg = decodeURIComponent(href.split('text=')[1]);
+  console.log('     link:', href.split('?')[0]);
+  console.log('     mensagem:', msg);
+  ok(href.startsWith('https://wa.me/5519988887777?'), 'cobrança vai para o WhatsApp da pessoa');
+  const m = msg.replace(/\u00a0/g, ' ');
+  ok(m.startsWith('Oiii *Bia*! Seu pedido ficou assim:\n\n• *2* Torresmo - 180g/cada\n• *1* Farofa de mandioca com torresmo - 450g/cada\n\n*Total: R$ 76,00.*') &&
+    m.includes('na chave: *(19) 99752-1066*') && m.endsWith('Muito obrigado!!'), 'texto da cobrança no formato pedido');
+  await q.screenshot({ path: OUT + '/n3-cobrar.png' });
+  await q.click('.ticket[data-numero="0001"] .alternar[data-campo="pago"]'); await q.waitForTimeout(400);
+  await q.click('[data-filtro="todos"]'); await q.waitForTimeout(200);
+  ok(!(await q.$('.ticket[data-numero="0001"] .ticket__cobrar')), 'depois de pago o botão de cobrar some');
+  console.log(f ? f + ' FALHA(S)' : 'tudo certo');
+  await b.close();
+})();

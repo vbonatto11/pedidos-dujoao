@@ -103,3 +103,5 @@ A coluna nova *Peso (kg)* aparece sozinha na aba Itens no primeiro uso.
 | `config.js` | URL da planilha, WhatsApp e PIX |
 | `assets/catalogo.js` | Produtos padrão e fotos |
 | `apps-script/Codigo.gs` | Script da planilha (backend) |
+| `CLAUDE.md` | Contexto técnico para o Claude continuar o projeto |
+| `testes/` | Simulador da planilha e testes automáticos (`bash testes/rodar.sh`) |
